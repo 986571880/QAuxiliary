@@ -21,7 +21,6 @@
  */
 package me.singleneuron.hook
 
-import com.microsoft.appcenter.analytics.channel.SessionTracker
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
 import de.robv.android.xposed.XposedHelpers

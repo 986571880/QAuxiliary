@@ -43,7 +43,7 @@ import javax.net.ssl.HttpsURLConnection
 
 object TransactionHelper {
 
-    private const val apiAddress = "https://api.qwq2333.top/qa"
+    private const val apiAddress = "https://localhost/qa"
 
     // in ms, 15min
     private const val COOLDOWN_TIME = 15 * 60 * 1000L

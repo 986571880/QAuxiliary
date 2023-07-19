@@ -23,7 +23,6 @@ package io.github.qauxv.util;
 
 import android.app.Application;
 import cc.ioctl.util.Reflex;
-import com.microsoft.appcenter.crashes.Crashes;
 import cc.ioctl.util.HostInfo;
 
 public class BugCollector {
@@ -36,7 +35,6 @@ public class BugCollector {
             Application ctx = HostInfo.getApplication();
             if (ctx != null) {
                 CliOper.__init__(ctx);
-                Crashes.trackError(th);
             }
         } catch (Throwable ignored) {
         }

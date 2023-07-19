@@ -45,40 +45,9 @@ abstract class CardMsgList {
 }
 
 fun getBuiltInRule(): String {
-    val map = mapOf(
-        "禁止引流" to """(jq\.qq\.com)|(mqqapi.*?forward)""",
-        "禁止发送回执消息" to "viewReceiptMessage",
-        "禁止干扰性卡片" to """com\.tencent\.mobileqq\.reading""",
-        "禁止干扰性消息" to """serviceID[\s]*?=[\s]*?('|")(13|60|76|83)('|")""",
-        "禁止音视频通话" to """ti\.qq\.com""",
-        "禁止自动回复类卡片" to """com\.tencent\.autoreply"""
-    )
-    return map.encodeToJson()
+    return "{}"
 }
 
 fun getBlackList(): String {
-    if (LicenseStatus.isWhitelisted())
-        return "{}"
-    val cfg = ConfigManager.getDefaultConfig()
-    val cache: String = cfg.getStringOrDefault(cacheKey, "null")
-    if (cache != "null") {
-        val lastUpdateTime = cfg.getLongOrDefault(lastUpdateTimeKey, System.currentTimeMillis())
-        if (lastUpdateTime >= lastUpdateTime + 360 * 60 * 1000) {
-            SyncUtils.async {
-                val onlineRule = URL(apiAddress).readText()
-                cfg.putString(cacheKey, onlineRule)
-                cfg.putLong(lastUpdateTimeKey, System.currentTimeMillis())
-                cfg.save()
-            }
-        }
-        return cache
-    } else {
-        SyncUtils.async {
-            val onlineRule = URL(apiAddress).readText()
-            cfg.putString(cacheKey, onlineRule)
-            cfg.putLong(lastUpdateTimeKey, System.currentTimeMillis())
-            cfg.save()
-        }
-        return getBuiltInRule()
-    }
+    return "{}"
 }

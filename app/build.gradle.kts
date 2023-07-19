@@ -206,8 +206,6 @@ dependencies {
     // festival title
     implementation(libs.confetti)
     implementation(libs.weatherView)
-    implementation(libs.appcenter.analytics)
-    implementation(libs.appcenter.crashes)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.sealedEnum.runtime)
     implementation(libs.glide)

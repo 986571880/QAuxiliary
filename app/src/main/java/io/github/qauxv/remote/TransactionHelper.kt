@@ -77,38 +77,7 @@ object TransactionHelper {
      */
     @JvmStatic
     fun postCardMsg(uin: Long, msg: String): String? {
-        try {
-            if (LicenseStatus.isWhitelisted()) {
-                return null
-            }
-            val historyList = getCardMsgHistory()
-            if (historyList.size > 2) {
-                val lastSendTime = ConfigManager.getDefaultConfig().getLong(KEY_LAST_ACTION_COOLDOWN_TIME, 0L)
-                val countSinceLastCooldown = ConfigManager.getDefaultConfig().getInt(KEY_LAST_ACTION_COUNT_IN_COOLDOWN, 0)
-                return if (System.currentTimeMillis() - lastSendTime < COOLDOWN_TIME && countSinceLastCooldown >= MAX_ACTION_COUNT_PER_COOLDOWN) {
-                    requestSyncCardMsgHistory(historyList)
-                    "操作过于频繁，请稍后再试"
-                } else {
-                    // allow to send, but i++
-                    val cfg = ConfigManager.getDefaultConfig()
-                    cfg.putInt(KEY_LAST_ACTION_COUNT_IN_COOLDOWN, cfg.getIntOrDefault(KEY_LAST_ACTION_COUNT_IN_COOLDOWN, 0) + 1)
-                    // then allow to send
-                    val r = CardMsgSendRecord(uin, msg)
-                    notifyNewCardMsgRecord(r)
-                    null
-                }
-            } else {
-                // everything is ok
-                val r = CardMsgSendRecord(uin, msg)
-                notifyNewCardMsgRecord(r)
-                ConfigManager.getDefaultConfig().putLong(KEY_LAST_ACTION_COOLDOWN_TIME, System.currentTimeMillis())
-                ConfigManager.getDefaultConfig().putInt(KEY_LAST_ACTION_COUNT_IN_COOLDOWN, 1)
-                return null
-            }
-        } catch (e: Exception) {
-            Log.e(e)
-            return e.toString().replace("java.lang.", "").replace("java.io.", "").replace("org.json.", "")
-        }
+        return null // This spy function is removed
     }
 
     /**

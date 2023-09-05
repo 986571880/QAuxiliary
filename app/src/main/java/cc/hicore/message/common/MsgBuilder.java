@@ -4,19 +4,18 @@
  * https://github.com/cinit/QAuxiliary
  *
  * This software is non-free but opensource software: you can redistribute it
- * and/or modify it under the terms of the GNU Affero General Public License
- * as published by the Free Software Foundation; either
- * version 3 of the License, or any later version and our eula as published
+ * and/or modify it under the terms of the qwq233 Universal License
+ * as published on https://github.com/qwq233/license; either
+ * version 2 of the License, or any later version and our EULA as published
  * by QAuxiliary contributors.
  *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Affero General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the qwq233 Universal License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * and eula along with this software.  If not, see
- * <https://www.gnu.org/licenses/>
+ * See
+ * <https://github.com/qwq233/license>
  * <https://github.com/cinit/QAuxiliary/blob/master/LICENSE.md>.
  */
 
@@ -74,6 +73,15 @@ public class MsgBuilder {
             return MMethod.CallMethod(helper,"createPicElement",MsgElement.class,new Class[]{String.class,boolean.class,int.class},path,true,0);
         } catch (Exception e) {
             XLog.e("MsgBuilder.nt_build_pic",e);
+            throw new RuntimeException(e);
+        }
+    }
+    public static MsgElement nt_build_pic_guild(String path){
+        try {
+            Object helper = MClass.NewInstance(MClass.loadClass("com.tencent.qqnt.msg.api.impl.MsgUtilApiImpl"));
+            return MMethod.CallMethod(helper,"createPicElementForGuild",MsgElement.class,new Class[]{String.class,boolean.class,int.class},path,true,0);
+        } catch (Exception e) {
+            XLog.e("MsgBuilder.nt_build_pic_guild",e);
             throw new RuntimeException(e);
         }
     }

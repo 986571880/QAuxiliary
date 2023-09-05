@@ -4,19 +4,18 @@
  * https://github.com/cinit/QAuxiliary
  *
  * This software is non-free but opensource software: you can redistribute it
- * and/or modify it under the terms of the GNU Affero General Public License
- * as published by the Free Software Foundation; either
- * version 3 of the License, or any later version and our eula as published
+ * and/or modify it under the terms of the qwq233 Universal License
+ * as published on https://github.com/qwq233/license; either
+ * version 2 of the License, or any later version and our EULA as published
  * by QAuxiliary contributors.
  *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Affero General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the qwq233 Universal License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * and eula along with this software.  If not, see
- * <https://www.gnu.org/licenses/>
+ * See
+ * <https://github.com/qwq233/license>
  * <https://github.com/cinit/QAuxiliary/blob/master/LICENSE.md>.
  */
 
@@ -50,6 +49,7 @@ import cc.ioctl.util.Reflex;
 import com.tencent.qqnt.kernel.nativeinterface.Contact;
 import com.tencent.qqnt.kernel.nativeinterface.IKernelMsgService;
 import com.tencent.qqnt.kernel.nativeinterface.MsgAttributeInfo;
+import com.xiaoniu.util.ContextUtils;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
@@ -255,6 +255,9 @@ public class RepeaterPlus extends BaseFunctionHook implements SessionHooker.IAIO
                     }
                     Method finalGetMsg = getMsg;
                     HookUtils.hookAfterIfEnabled(this, listMethod, param -> {
+                        if (ContextUtils.getCurrentActivity().getClass().getName().contains("MultiForwardActivity")) {
+                            return;
+                        }
                         Object msg = finalGetMsg.invoke(param.thisObject);
                         Object item = CustomMenu.createItemNt(msg, "+1", R.id.item_repeat, () -> {
                             repeatByForwardNt(msg);

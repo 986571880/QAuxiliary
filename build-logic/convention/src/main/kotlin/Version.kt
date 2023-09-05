@@ -6,11 +6,11 @@ import java.util.Properties
 object Version {
     val java = JavaVersion.VERSION_11
 
-    const val compileSdkVersion = 33
+    const val compileSdkVersion = 34
     val buildToolsVersion = findBuildToolsVersion()
     const val minSdk = 24
-    const val targetSdk = 33
-    const val versionName = "1.4.1"
+    const val targetSdk = 34
+    const val versionName = "1.4.3"
 
     private const val defaultNdkVersion = "25.1.8937393"
     private const val defaultCMakeVersion = "3.22.1"

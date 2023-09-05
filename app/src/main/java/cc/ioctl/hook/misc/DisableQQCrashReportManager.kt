@@ -4,19 +4,18 @@
  * https://github.com/cinit/QAuxiliary
  *
  * This software is non-free but opensource software: you can redistribute it
- * and/or modify it under the terms of the GNU Affero General Public License
- * as published by the Free Software Foundation; either
- * version 3 of the License, or any later version and our eula as published
+ * and/or modify it under the terms of the qwq233 Universal License
+ * as published on https://github.com/qwq233/license; either
+ * version 2 of the License, or any later version and our EULA as published
  * by QAuxiliary contributors.
  *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Affero General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the qwq233 Universal License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * and eula along with this software.  If not, see
- * <https://www.gnu.org/licenses/>
+ * See
+ * <https://github.com/qwq233/license>
  * <https://github.com/cinit/QAuxiliary/blob/master/LICENSE.md>.
  */
 
@@ -29,6 +28,7 @@ import io.github.qauxv.dsl.FunctionEntryRouter
 import io.github.qauxv.hook.CommonSwitchFunctionHook
 import io.github.qauxv.util.Initiator
 import io.github.qauxv.util.SyncUtils
+import io.github.qauxv.util.isTim
 import xyz.nextalone.util.isPublic
 import xyz.nextalone.util.isStatic
 
@@ -40,6 +40,7 @@ object DisableQQCrashReportManager : CommonSwitchFunctionHook(targetProc = SyncU
     override val description = "仅限调试，无实际用途"
     override val uiItemLocation = FunctionEntryRouter.Locations.DebugCategory.DEBUG_CATEGORY
     override val isApplicationRestartRequired = true
+    override val isAvailable = !isTim()
 
     override fun initOnce(): Boolean {
         val kQQCrashReportManager = Initiator.loadClass("com.tencent.qqperf.monitor.crash.QQCrashReportManager")

@@ -4,19 +4,18 @@
  * https://github.com/cinit/QAuxiliary
  *
  * This software is non-free but opensource software: you can redistribute it
- * and/or modify it under the terms of the GNU Affero General Public License
- * as published by the Free Software Foundation; either
- * version 3 of the License, or any later version and our eula as published
+ * and/or modify it under the terms of the qwq233 Universal License
+ * as published on https://github.com/qwq233/license; either
+ * version 2 of the License, or any later version and our EULA as published
  * by QAuxiliary contributors.
  *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Affero General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the qwq233 Universal License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * and eula along with this software.  If not, see
- * <https://www.gnu.org/licenses/>
+ * See
+ * <https://github.com/qwq233/license>
  * <https://github.com/cinit/QAuxiliary/blob/master/LICENSE.md>.
  */
 
@@ -32,6 +31,7 @@ import de.robv.android.xposed.XposedBridge;
 import io.github.qauxv.base.IDynamicHook;
 import io.github.qauxv.base.annotation.FunctionHookEntry;
 import io.github.qauxv.hook.BaseHookDispatcher;
+import io.github.qauxv.router.dispacher.InputButtonHookDispatcher;
 import io.github.qauxv.util.Initiator;
 import io.github.qauxv.util.dexkit.AIO_Create_QQNT;
 import io.github.qauxv.util.dexkit.DexKit;
@@ -50,7 +50,8 @@ public class SessionHooker extends BaseHookDispatcher<SessionHooker.IAIOParamUpd
     private static final SessionHooker.IAIOParamUpdate[] DECORATORS = {
             StickerPanelEntryHooker.INSTANCE,
             MultiActionHook.INSTANCE,
-            RepeaterPlus.INSTANCE
+            RepeaterPlus.INSTANCE,
+            InputButtonHookDispatcher.INSTANCE
     };
 
     @NonNull

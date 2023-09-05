@@ -4,19 +4,18 @@
  * https://github.com/cinit/QAuxiliary
  *
  * This software is non-free but opensource software: you can redistribute it
- * and/or modify it under the terms of the GNU Affero General Public License
- * as published by the Free Software Foundation; either
- * version 3 of the License, or any later version and our eula as published
+ * and/or modify it under the terms of the qwq233 Universal License
+ * as published on https://github.com/qwq233/license; either
+ * version 2 of the License, or any later version and our EULA as published
  * by QAuxiliary contributors.
  *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Affero General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the qwq233 Universal License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * and eula along with this software.  If not, see
- * <https://www.gnu.org/licenses/>
+ * See
+ * <https://github.com/qwq233/license>
  * <https://github.com/cinit/QAuxiliary/blob/master/LICENSE.md>.
  */
 
@@ -224,6 +223,8 @@ public class ReplyMsgWithImg extends CommonSwitchFunctionHook implements IBaseCh
                 Log.d("ReplyMsgWithImg PhotoListPanel.a chatPie is null");
                 return;
             }
+
+            // TODO: NT版本请用getSessionByAIOParam()
             Parcelable sessionInfo = InputButtonHookDispatcher.getSessionInfo(chatPie);
             int isTroop = SessionInfoImpl.getUinType(sessionInfo);
             if (isTroop == 1 || isTroop == 0) {
@@ -488,7 +489,7 @@ public class ReplyMsgWithImg extends CommonSwitchFunctionHook implements IBaseCh
     }
 
     @Override
-    public void onInitBaseChatPie(@NonNull Object baseChatPie, @NonNull ViewGroup aioRootView, @NonNull Parcelable session, @NonNull Context ctx,
+    public void onInitBaseChatPie(@NonNull Object baseChatPie, @NonNull ViewGroup aioRootView, @Nullable Parcelable session, @NonNull Context ctx,
             @NonNull AppRuntime rt) {
         mBaseChatPie = new WeakReference<>(Objects.requireNonNull(baseChatPie, "baseChatPie is null"));
         EditText input = aioRootView.findViewById(ctx.getResources().getIdentifier("input", "id", ctx.getPackageName()));

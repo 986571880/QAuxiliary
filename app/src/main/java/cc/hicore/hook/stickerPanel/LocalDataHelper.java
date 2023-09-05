@@ -24,9 +24,7 @@ public class LocalDataHelper {
                     localPath.Name = path.getString("Name");
                     localPath.storePath = path.getString("storePath");
                     paths.add(localPath);
-                } catch (Exception e) {
-
-                }
+                } catch (Exception ignored) { }
             }
             return paths;
         } catch (Exception e) {
@@ -48,15 +46,13 @@ public class LocalDataHelper {
                     localPath.MD5 = path.getString("MD5");
                     localPath.fileName = path.optString("fileName");
                     localPath.addTime = path.optLong("addTime");
-                    localPath.type = path.getInt("type");
+                    localPath.type = path.optInt("type",1);
                     localPath.url = path.optString("url");
                     localPath.thumbName = path.optString("thumbName");
                     localPath.thumbUrl = path.optString("thumbUrl");
                     localPath.ocr = path.optString("ocr");
                     items.add(localPath);
-                } catch (Exception e) {
-
-                }
+                } catch (Exception ignored) { }
 
             }
             return items;

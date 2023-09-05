@@ -4,25 +4,25 @@
  * https://github.com/cinit/QAuxiliary
  *
  * This software is non-free but opensource software: you can redistribute it
- * and/or modify it under the terms of the GNU Affero General Public License
- * as published by the Free Software Foundation; either
- * version 3 of the License, or any later version and our eula as published
+ * and/or modify it under the terms of the qwq233 Universal License
+ * as published on https://github.com/qwq233/license; either
+ * version 2 of the License, or any later version and our EULA as published
  * by QAuxiliary contributors.
  *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Affero General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the qwq233 Universal License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * and eula along with this software.  If not, see
- * <https://www.gnu.org/licenses/>
+ * See
+ * <https://github.com/qwq233/license>
  * <https://github.com/cinit/QAuxiliary/blob/master/LICENSE.md>.
  */
 
 package cc.hicore.hook.stickerPanel.Hooker;
 
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import androidx.annotation.NonNull;
@@ -56,6 +56,7 @@ import io.github.qauxv.util.dexkit.AbstractQQCustomMenuItem;
 import io.github.qauxv.util.dexkit.ChatPanel_InitPanel_QQNT;
 import io.github.qauxv.util.dexkit.DexKit;
 import io.github.qauxv.util.dexkit.DexKitTarget;
+import io.github.qauxv.util.dexkit.Guild_Emo_Btn_Create_QQNT;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -70,7 +71,8 @@ public class StickerPanelEntryHooker extends CommonSwitchFunctionHook implements
     private StickerPanelEntryHooker() {
         super(new DexKitTarget[]{
                 ChatPanel_InitPanel_QQNT.INSTANCE,
-                AbstractQQCustomMenuItem.INSTANCE
+                AbstractQQCustomMenuItem.INSTANCE,
+                Guild_Emo_Btn_Create_QQNT.INSTANCE
         });
     }
 
@@ -103,16 +105,31 @@ public class StickerPanelEntryHooker extends CommonSwitchFunctionHook implements
             }
         });
 
+        HookUtils.hookAfterIfEnabled(this,DexKit.loadMethodFromCache(Guild_Emo_Btn_Create_QQNT.INSTANCE),param -> {
+            ViewGroup vg = (ViewGroup) param.getResult();
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                View v = vg.getChildAt(i);
+                if (v instanceof ImageView) {
+                    v.setOnLongClickListener(v1 -> {
+                        ICreator.createPanel(v1.getContext());
+                        return true;
+                    });
+                }
+            }
+        });
+
         HookUtils.hookAfterIfEnabled(this, MMethod.FindMethod(Initiator.loadClass("com.tencent.qqnt.aio.shortcutbar.PanelIconLinearLayout"),
                 null,
                 ImageView.class,
                 new Class[]{Initiator.load("com.tencent.qqnt.aio.shortcutbar.a")}),
                 param -> {
                     ImageView imageView = (ImageView) param.getResult();
-                    imageView.setOnLongClickListener(view -> {
-                        ICreator.createPanel(view.getContext());
-                        return true;
-                    });
+                    if ("表情".contentEquals(imageView.getContentDescription())){
+                        imageView.setOnLongClickListener(view -> {
+                            ICreator.createPanel(view.getContext());
+                            return true;
+                        });
+                    }
                 });
 
         //Hook for longClick msgItem
@@ -201,6 +218,11 @@ public class StickerPanelEntryHooker extends CommonSwitchFunctionHook implements
     @Override
     public String getName() {
         return "表情面板";
+    }
+
+    @Override
+    public String getDescription() {
+        return "长按表情按钮打开，仅支持QQNT";
     }
 
     @Override

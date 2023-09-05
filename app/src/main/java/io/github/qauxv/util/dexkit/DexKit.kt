@@ -55,9 +55,10 @@ object DexKit {
     @JvmStatic
     fun doFindClass(target: DexKitTarget): Class<*>? {
         when (target) {
-            is DexKitTarget.UsingStr -> {
+            is DexKitTarget.UsingStr,
+            is DexKitTarget.UsingStringVector -> {
                 loadClassFromCache(target)?.let { return it }
-                return DexDeobfsProvider.getCurrentBackend().doFindClass(target)
+                return DexDeobfsProvider.getCurrentBackend().use { it.doFindClass(target) }
             }
             else -> throw IllegalArgumentException("Unsupported target type: $target")
         }
@@ -67,10 +68,11 @@ object DexKit {
     @JvmStatic
     fun doFindMethod(target: DexKitTarget): Method? {
         when (target) {
-            is DexKitTarget.UsingStr -> {
+            is DexKitTarget.UsingStr,
+            is DexKitTarget.UsingStringVector -> {
                 check(target.findMethod) { "$target attempted to access method!" }
                 loadMethodFromCache(target)?.let { return it }
-                return DexDeobfsProvider.getCurrentBackend().doFindMethod(target)
+                return DexDeobfsProvider.getCurrentBackend().use { it.doFindMethod(target) }
             }
             else -> throw IllegalArgumentException("Unsupported target type: $target")
         }

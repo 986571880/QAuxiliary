@@ -4,19 +4,18 @@
  * https://github.com/cinit/QAuxiliary
  *
  * This software is non-free but opensource software: you can redistribute it
- * and/or modify it under the terms of the GNU Affero General Public License
- * as published by the Free Software Foundation; either
- * version 3 of the License, or any later version and our eula as published
+ * and/or modify it under the terms of the qwq233 Universal License
+ * as published on https://github.com/qwq233/license; either
+ * version 2 of the License, or any later version and our EULA as published
  * by QAuxiliary contributors.
  *
  * This software is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Affero General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the qwq233 Universal License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * and eula along with this software.  If not, see
- * <https://www.gnu.org/licenses/>
+ * See
+ * <https://github.com/qwq233/license>
  * <https://github.com/cinit/QAuxiliary/blob/master/LICENSE.md>.
  */
 
@@ -26,6 +25,8 @@ import androidx.annotation.NonNull;
 import cc.hicore.ReflectUtil.MMethod;
 import cc.ioctl.util.HookUtils;
 import cc.ioctl.util.HostInfo;
+import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedHelpers;
 import io.github.qauxv.base.annotation.FunctionHookEntry;
 import io.github.qauxv.base.annotation.UiItemAgentEntry;
 import io.github.qauxv.dsl.FunctionEntryRouter;
@@ -58,13 +59,13 @@ public class UnlockLeftSlipLimit extends CommonSwitchFunctionHook {
     @Override
     protected boolean initOnce() throws Exception {
         if (HostInfo.requireMinQQVersion(QQVersion.QQ_8_9_63)) {
-            Method[] ms = Initiator.loadClass("com.tencent.mobileqq.aio.msglist.holder.component.leftswipearea.AIOContentLeftSwipeHelper").getDeclaredMethods();
-            for (Method m : ms) {
-                if (m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == boolean.class) {
-                    HookUtils.hookBeforeIfEnabled(this, m, param -> param.args[0] = true);
-                    break;
-                }
-            }
+            XposedHelpers.findAndHookMethod(Initiator.loadClass("com.tencent.mobileqq.ark.api.impl.ArkHelperImpl"), "isSupportReply", String.class,
+                    String.class, String.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.setResult(true);
+                        }
+                    });
             return true;
         }
         Method m = MMethod.FindMethod(DexKit.requireMethodFromCache(NLeftSwipeReplyHelper_reply.INSTANCE).getDeclaringClass(), methodName, boolean.class,

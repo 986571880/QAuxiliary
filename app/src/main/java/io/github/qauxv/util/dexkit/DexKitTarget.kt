@@ -53,6 +53,11 @@ sealed class DexKitTarget {
         abstract val traitString: Array<String>
     }
 
+    sealed class UsingStringVector : DexKitTarget() {
+        // relationship: ((v[0][0] && v[0][1] && ..) || (v[1][0] && v[1][1] && ..) || ..)
+        abstract val traitStringVectors: Array<Array<String>>
+    }
+
     sealed class UsingDexkit : DexKitTarget()
 
     abstract val declaringClass: String
@@ -381,6 +386,13 @@ data object AbstractQQCustomMenuItem : DexKitTarget.UsingStr() {
     override val filter = DexKitFilter.strInClsName("com/tencent/qqnt/aio/menu/ui")
 }
 
+data object Guild_Emo_Btn_Create_QQNT : DexKitTarget.UsingStr() {
+    override val findMethod: Boolean = true
+    override val traitString = arrayOf("mEmojiLayout.findViewByI…id.guild_aio_emoji_image)")
+    override val declaringClass = "Guild_Emo_Btn_Create_QQNT"
+    override val filter = DexKitFilter.allowAll
+}
+
 data object NBaseChatPie_init : DexKitTarget.UsingStr() {
     override val findMethod: Boolean = true
     override val declaringClass: String = _BaseChatPie()?.name ?: "com.tencent.mobileqq.activity.BaseChatPie"
@@ -476,7 +488,10 @@ data object NQQSettingMe_onResume : DexKitTarget.UsingStr() {
     override val findMethod: Boolean = true
     override val declaringClass = "com.tencent.mobileqq.activity.QQSettingMe"
     override val traitString = arrayOf("-->onResume!")
-    override val filter = DexKitFilter.strInClsName("QQSettingMe")
+    override val filter = filter@{ it: DexMethodDescriptor ->
+        it.declaringClass.contains("QQSettingMe") && !it.declaringClass.contains("V9")
+        // 暂不支持V9侧滑栏，排除
+    }
 }
 
 data object NVipUtils_getPrivilegeFlags : DexKitTarget.UsingStr() {
@@ -608,6 +623,7 @@ data object NCustomWidgetUtil_updateCustomNoteTxt : DexKitTarget.UsingStr() {
                 && m.parameterTypes[0] == TextView::class.java && m.paramCount == 6
         }
 }
+
 data object CCustomWidgetUtil_updateCustomNoteTxt_NT : DexKitTarget.UsingStr() {
     // guess
     override val declaringClass = "com.tencent.widget.CustomWidgetUtil"
@@ -690,12 +706,19 @@ data object AIO_Create_QQNT : DexKitTarget.UsingStr() {
     override val filter = DexKitFilter.allowAll
 }
 
+data object AIO_InputRootInit_QQNT : DexKitTarget.UsingStr() {
+    override val findMethod: Boolean = true
+    override val traitString = arrayOf("inputRoot.findViewById(R.id.send_btn)")
+    override val declaringClass = ""
+    override val filter = DexKitFilter.strInClsName("com/tencent/mobileqq/aio/input")
+}
+
 data object EmoMsgUtils_isSingleLottie_QQNT : DexKitTarget.UsingStr() {
     override val findMethod: Boolean = true
     override val traitString = arrayOf("is Valid EmojiFaceId")
     override val declaringClass = ""
     override val filter = DexKitFilter.strInClsName("com/tencent/mobileqq/aio/utils")
-                                                     // "com/tencent/guild/aio/util" 是频道的
+    // "com/tencent/guild/aio/util" 是频道的
 }
 
 data object Reply_At_QQNT : DexKitTarget.UsingStr() {
@@ -717,7 +740,7 @@ data object TroopEnterEffect_QQNT : DexKitTarget.UsingStr() {
     override val traitString = arrayOf("playAnimaions: isSimpleUISwitch = true")
     override val declaringClass = ""
     override val filter = DexKitFilter.allowAll
-                            // 理论上非NT也能用，但祖法不可变
+    // 理论上非NT也能用，但祖法不可变
 }
 
 data object NQZMoment_EntranceEnabled : DexKitTarget.UsingStr() {
@@ -725,4 +748,52 @@ data object NQZMoment_EntranceEnabled : DexKitTarget.UsingStr() {
     override val traitString = arrayOf("KEY_OPEN_QZMOMENT_ENTRANCE")
     override val declaringClass = ""
     override val filter = DexKitFilter.strInClsName("com/qzone/reborn/qzmoment/util")
+}
+
+data object DefaultFileModel : DexKitTarget.UsingStr() {
+    override val findMethod: Boolean = false
+    override val traitString = arrayOf("onVideoPlayerError : file entity is null")
+    override val declaringClass = "com.tencent.mobileqq.filemanager.fileviewer.model.DefaultFileModel"
+    override val filter = DexKitFilter.strInClsName("com.tencent.mobileqq.filemanager.fileviewer.model")
+}
+
+data object FileBrowserActivity_InnerClass_onItemClick : DexKitTarget.UsingStringVector() {
+    override val findMethod: Boolean = true
+    override val traitStringVectors: Array<Array<String>> = arrayOf(arrayOf("GeneralFileBrowserActivity", "reportShareActionSheetClick"))
+    override val declaringClass = ""
+    override val filter = DexKitFilter.strInClsName("FileBrowserActivity")
+}
+
+data object Multiforward_Avatar_setListener_NT : DexKitTarget.UsingDexkit() {
+    override val findMethod: Boolean = true
+    override val declaringClass = "com.tencent.mobileqq.aio.msglist.holder.component.avatar.AIOAvatarContentComponent"
+    override val filter = DexKitFilter.allowAll
+}
+
+data object AIOTextElementCtor: DexKitTarget.UsingStr()  {
+    override val findMethod: Boolean = true;
+    override val declaringClass = "com.tencent.mobileqq.aio.msg.AIOMsgElement.AIOTextElementCtor"
+    override val traitString = arrayOf("textElement")
+    override val filter = DexKitFilter.strInClsName("com/tencent/mobileqq/aio/msg")
+}
+
+data object AIOPicElementType: DexKitTarget.UsingStr()  {
+    override val findMethod: Boolean = false;
+    override val declaringClass = "com.tencent.mobileqq.aio.msg.AIOMsgElementType.PicElement";
+    override val traitString = arrayOf("PicElement(origPath=");
+    override val filter = DexKitFilter.strInClsName("com/tencent/qqnt/aio/");
+}
+
+data object MultiSelectToBottomIntent: DexKitTarget.UsingStr()  {
+    override val findMethod: Boolean = false;
+    override val declaringClass = "com.tencent.mobileqq.aio.input.multiselect.c.toBottomIntent";
+    override val traitString = arrayOf("SelectToBottom(dividingLineTop=");
+    override val filter = DexKitFilter.strInClsName("com/tencent/mobileqq/aio/input/multiselect");
+}
+
+data object AIOSendMsg: DexKitTarget.UsingStr()  {
+    override val findMethod: Boolean = true;
+    override val declaringClass = "com.tencent.mobileqq.aio.input.sendmsg.AIOSendMsgVMDelegate.sendMsg";
+    override val traitString = arrayOf("[sendMsg] elements is empty");
+    override val filter = DexKitFilter.strInClsName("com/tencent/mobileqq/aio/input/sendmsg/AIOSendMsgVMDelegate");
 }

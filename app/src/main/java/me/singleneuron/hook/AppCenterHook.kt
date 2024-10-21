@@ -21,7 +21,6 @@
  */
 package me.singleneuron.hook
 
-import com.microsoft.appcenter.analytics.channel.SessionTracker
 import io.github.qauxv.util.xpcompat.XC_MethodHook
 import io.github.qauxv.util.xpcompat.XC_MethodReplacement
 import io.github.qauxv.util.xpcompat.XposedHelpers

@@ -271,6 +271,32 @@ object MsgRecordUtil {
         }
     }
 
+    // com.tencent.mobileqq.aio.msglist.holder.component.nick.block.AbsNickBlock -> com.tencent.mobileqq.aio.msglist.holder.component.nick.block.c
+    // public class ? extends com.tencent.mobileqq.aio.msglist.holder.component.nick.block.AbsNickBlock
+    val NICK_BLOCKS = object : HashBiMap<String, String>() {
+        init {
+            // extends AbsNickBlockProvider
+            // com.tencent.mobileqq.vas.vipicon.VasNickBlockProvider
+            put("VIP图标", "AIOVipIconProcessor")// com.tencent.mobileqq.vas.vipicon.AIOVipIconProcessor
+            put("额外VIP图标", "AIOVipIconExProcessor")// com.tencent.mobileqq.vas.vipicon.AIOVipIconExProcessor
+            put("游戏图标", "AIOGameIconProcessor")// com.tencent.mobileqq.vas.vipicon.AIOGameIconProcessor
+
+            // com.tencent.mobileqq.aio.msglist.holder.component.nick.block.NickBlockProvider
+            put("昵称", "MainNickNameBlock")// com.tencent.mobileqq.aio.msglist.holder.component.nick.block.MainNickNameBlock
+            put("机器人图标", "NickNameRobotBlock")// com.tencent.mobileqq.aio.msglist.holder.component.nick.robot.NickNameRobotBlock
+
+            // com.tencent.qqnt.aio.nick.ExtNickBlockProvider
+            put("群等级图标", "AIOTroopMemberLevelBlock")// com.tencent.qqnt.aio.nick.memberlevel.AIOTroopMemberLevelBlock
+            put("群数字等级图标", "AIOTroopMemberGradeLevelBlock")// com.tencent.qqnt.aio.gradelevel.AIOTroopMemberGradeLevelBlock
+            put("群荣耀图标", "AIOTroopHonorNickBlock")// com.tencent.qqnt.aio.mutualmark.AIOTroopHonorNickBlock
+            put("群匿名图标", "AIOTroopAnonymousNickBlock")// com.tencent.qqnt.aio.anonymous.AIOTroopAnonymousNickBlock
+
+            // com.tencent.mobileqq.activity.qcircle.c
+            put("群QQ圈图标", "QCircleTroopIconProcessor")// com.tencent.mobileqq.activity.qcircle.QCircleTroopIconProcessor
+
+        }
+    }
+
     val MSG_WITH_DESC = object : HashBiMap<String, Int>() {
         init {
             MSG.forEach {
@@ -340,5 +366,15 @@ object MsgRecordUtil {
         return if (map.containsKey(cache)) {
             map[cache]!!
         } else cache
+    }
+
+    fun parseNickBlocks(activeItems: List<String>): List<String> {
+        val items: MutableList<String> = ArrayList()
+        for (item in activeItems) {
+            if (NICK_BLOCKS.containsKey(item)) {
+                items.add(NICK_BLOCKS[item]!!)
+            }
+        }
+        return items
     }
 }

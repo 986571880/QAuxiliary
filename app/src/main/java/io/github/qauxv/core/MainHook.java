@@ -25,9 +25,11 @@ import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.os.Bundle;
 import android.system.Os;
 import android.system.StructUtsname;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import cc.hicore.QApp.QAppUtils;
 import cc.ioctl.hook.SettingEntryHook;
@@ -36,6 +38,7 @@ import cc.ioctl.hook.chat.GagInfoDisclosure;
 import cc.ioctl.hook.experimental.FileRecvRedirect;
 import cc.ioctl.hook.experimental.ForcePadMode;
 import cc.ioctl.hook.misc.CustomSplash;
+import cc.ioctl.hook.misc.DisableHotPatch;
 import cc.ioctl.hook.misc.DisableQQCrashReportManager;
 import cc.ioctl.hook.msg.RevokeMsgHook;
 import cc.ioctl.hook.notification.MuteQZoneThumbsUp;
@@ -43,14 +46,15 @@ import cc.ioctl.hook.ui.misc.OptXListViewScrollBar;
 import cc.ioctl.hook.ui.title.RemoveCameraButton;
 import cc.ioctl.util.HostInfo;
 import cc.ioctl.util.Reflex;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
+import io.github.qauxv.util.xpcompat.XC_MethodHook;
+import io.github.qauxv.util.xpcompat.XposedBridge;
 import io.github.qauxv.config.ConfigItems;
 import io.github.qauxv.config.SafeModeManager;
 import io.github.qauxv.lifecycle.ActProxyMgr;
 import io.github.qauxv.lifecycle.JumpActivityEntryHook;
 import io.github.qauxv.lifecycle.Parasitics;
 import io.github.qauxv.lifecycle.ShadowFileProvider;
+import io.github.qauxv.omnifix.hw.HwResThemeMgrFix;
 import io.github.qauxv.util.Initiator;
 import io.github.qauxv.util.LicenseStatus;
 import io.github.qauxv.util.Log;
@@ -79,7 +83,10 @@ public class MainHook {
 
     private static void injectLifecycleForProcess(Context ctx) {
         if (SyncUtils.isMainProcess()) {
-            Parasitics.injectModuleResources(ctx.getApplicationContext().getResources());
+            Resources res = ctx.getApplicationContext().getResources();
+            HwResThemeMgrFix.initHook(ctx);
+            HwResThemeMgrFix.fix(ctx, res);
+            Parasitics.injectModuleResources(res);
         }
         if (SyncUtils.isTargetProcess(SyncUtils.PROC_MAIN | SyncUtils.PROC_PEAK | SyncUtils.PROC_TOOL)) {
             Parasitics.initForStubActivity(ctx);
@@ -93,23 +100,22 @@ public class MainHook {
         }
     }
 
-    public void performHook(Context ctx, Object step) {
+    public void performHook(@NonNull Context ctx, @Nullable Object step) {
         SyncUtils.initBroadcast(ctx);
         injectLifecycleForProcess(ctx);
         if (HostInfo.isQQHD()) {
             initForQQHDBasePadActivityMitigation();
         }
-        if (isWindowsSubsystemForAndroid()) {
-            Log.w("WSA detected, aggressive resource injection is required to prevent ResourceNotFound crash.");
-            // TODO: 2023-1-20 implement aggressive resource injection
-        }
-        boolean safeMode = SafeModeManager.getManager().isEnabled();
+        boolean safeMode = SafeModeManager.getManager().isEnabledForNextTime();
+        SafeModeManager.getManager().setSafeModeForThisTime(safeMode);
         if (safeMode) {
             LicenseStatus.sDisableCommonHooks = true;
             Log.i("Safe mode enabled, disable hooks");
         }
+        // deliberately allowing DisableHotPatch and DisableQQCrashReportManager in safe mode
+        HookInstaller.allowEarlyInit(DisableHotPatch.INSTANCE);
+        HookInstaller.allowEarlyInit(DisableQQCrashReportManager.INSTANCE);
         if (!safeMode) {
-            HookInstaller.allowEarlyInit(DisableQQCrashReportManager.INSTANCE);
             HookInstaller.allowEarlyInit(RevokeMsgHook.INSTANCE);
             HookInstaller.allowEarlyInit(MuteQZoneThumbsUp.INSTANCE);
             HookInstaller.allowEarlyInit(MuteAtAllAndRedPacket.INSTANCE);
@@ -153,8 +159,12 @@ public class MainHook {
                     }
                 });
             } else {
-                Log.w("LoadData not found, running third stage hooks in background");
-                InjectDelayableHooks.step(null);
+                Log.i("LoadData not found, running third stage hooks in background");
+                if (safeMode) {
+                    SettingEntryHook.INSTANCE.initialize();
+                } else {
+                    InjectDelayableHooks.step(null);
+                }
             }
         } else {
             if (!safeMode && LicenseStatus.hasUserAcceptEula()) {
@@ -172,6 +182,9 @@ public class MainHook {
 
     @Nullable
     private static Object getStartDirector(Object step) {
+        if (step == null) {
+            return null;
+        }
         Class<?> director = Initiator._StartupDirector();
         if (director == null && (QAppUtils.isQQnt())) {
             // NT QQ has different StartupDirector, and removed in 8.9.63(4190)

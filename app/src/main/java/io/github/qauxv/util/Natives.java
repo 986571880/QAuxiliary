@@ -21,28 +21,17 @@
  */
 package io.github.qauxv.util;
 
-import android.annotation.SuppressLint;
-import android.content.Context;
-import android.os.Build;
-import android.os.Build.VERSION;
-import android.os.Process;
-import android.system.Os;
-import android.system.StructUtsname;
-import com.tencent.mmkv.MMKV;
-import io.github.qauxv.BuildConfig;
-import io.github.qauxv.startup.HookEntry;
-import io.github.qauxv.startup.HybridClassLoader;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOError;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import io.github.qauxv.util.dexkit.DexMethodDescriptor;
+import io.github.qauxv.util.xpcompat.ArrayUtils;
 import java.io.IOException;
-import java.io.InputStream;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.lang.reflect.Modifier;
+import java.util.Objects;
 
 public class Natives {
 
@@ -181,190 +170,69 @@ public class Natives {
      * <p>
      * Do not use this directly, use {@link cc.ioctl.util.Reflex#invokeNonVirtual(Object, Method, Object[])} instead.
      *
-     * @param declaringClass   the class of the method, e.g. "Ljava/lang/String;"
-     * @param methodName the method name
-     * @param methodSig  the method signature, e.g. "(Ljava/lang/String;)Ljava/lang/String;"
-     * @param obj        the object to invoke the method on, must not be null
-     * @param args       the arguments to pass to the method, may be null if no arguments are passed
+     * @param declaringClass the class of the method, e.g. "Ljava/lang/String;"
+     * @param methodName     the method name
+     * @param methodSig      the method signature, e.g. "(Ljava/lang/String;)Ljava/lang/String;"
+     * @param obj            the object to invoke the method on, must not be null
+     * @param args           the arguments to pass to the method, may be null if no arguments are passed
      * @return the return value of the method
      * @throws InvocationTargetException if the method threw an exception
      */
     public static native Object invokeNonVirtualImpl(Class<?> declaringClass, String methodName,
-                                                     String methodSig, Object obj, Object[] args)
+            String methodSig, Object obj, Object[] args)
             throws InvocationTargetException;
 
-    private static void registerNativeLibEntry(String soTailingName) {
-        if (soTailingName == null || soTailingName.length() == 0) {
-            return;
-        }
-        try {
-            Class<?> xp = Class.forName(HybridClassLoader.getXposedBridgeClassName());
-            try {
-                xp.getClassLoader()
-                        .loadClass(HybridClassLoader.getObfuscatedLsposedNativeApiClassName())
-                        .getMethod("recordNativeEntrypoint", String.class)
-                        .invoke(null, soTailingName);
-            } catch (ClassNotFoundException ignored) {
-                // not LSPosed, ignore
-            } catch (NoSuchMethodException | IllegalArgumentException
-                | InvocationTargetException | IllegalAccessException e) {
-                Log.e(e);
-            }
-        } catch (ClassNotFoundException e) {
-            // not in host process, ignore
-        }
-    }
-
-    public static void load(Context ctx) throws LinkageError {
-        try {
-            getpagesize();
-            return;
-        } catch (UnsatisfiedLinkError ignored) {
-        }
-        try {
-            Class.forName(HybridClassLoader.getXposedBridgeClassName());
-            // in host process
-            List<String> abis = getAbiForLibrary();
-            String modulePath = HookEntry.getModulePath();
-            loadNativeLibraryInHost(ctx, modulePath, abis);
-        } catch (ClassNotFoundException e) {
-            // not in host process, ignore
-            System.loadLibrary("qauxv");
-        }
-        getpagesize();
-        File mmkvDir = new File(ctx.getFilesDir(), "qa_mmkv");
-        if (!mmkvDir.exists()) {
-            mmkvDir.mkdirs();
-        }
-        // MMKV requires a ".tmp" cache directory, we have to create it manually
-        File cacheDir = new File(mmkvDir, ".tmp");
-        if (!cacheDir.exists()) {
-            cacheDir.mkdir();
-        }
-        MMKV.initialize(ctx, mmkvDir.getAbsolutePath(), s -> {
-            // nop, mmkv is attached with libqauxv.so already
-        });
-        MMKV.mmkvWithID("global_config", MMKV.MULTI_PROCESS_MODE);
-        MMKV.mmkvWithID("global_cache", MMKV.MULTI_PROCESS_MODE);
-    }
-
-    @SuppressLint("UnsafeDynamicallyLoadedCode")
-    private static void loadNativeLibraryInHost(Context ctx, String modulePath, List<String> abis) throws UnsatisfiedLinkError {
-        Iterator<String> it = abis.iterator();
-        if (modulePath != null && modulePath.length() > 0 && new File(modulePath).exists()) {
-            // try direct memory map
-            while (it.hasNext()) {
-                String abi = it.next();
-                try {
-                    System.load(modulePath + "!/lib/" + abi + "/libqauxv.so");
-                    Log.d("dlopen by mmap success");
-                    return;
-                } catch (UnsatisfiedLinkError e1) {
-                    throwIfJniError(e1);
-                }
-            }
-        }
-        // direct memory map load failed, extract and dlopen
-        File libname = extractNativeLibrary(ctx, "qauxv", abis.get(0));
-        registerNativeLibEntry(libname.getName());
-        try {
-            System.load(libname.getAbsolutePath());
-            Log.d("dlopen by extract success");
-        } catch (UnsatisfiedLinkError e3) {
-            throwIfJniError(e3);
-            // give enough information to help debug
-            // Is this CPU_ABI bad?
-            Log.e("Build.SDK_INT=" + VERSION.SDK_INT);
-            Log.e("Build.CPU_ABI is: " + Build.CPU_ABI);
-            Log.e("Build.CPU_ABI2 is: " + Build.CPU_ABI2);
-            Log.e("Build.SUPPORTED_ABIS is: " + Arrays.toString(Build.SUPPORTED_ABIS));
-            Log.e("Build.SUPPORTED_32_BIT_ABIS is: " + Arrays.toString(Build.SUPPORTED_32_BIT_ABIS));
-            Log.e("Build.SUPPORTED_64_BIT_ABIS is: " + Arrays.toString(Build.SUPPORTED_64_BIT_ABIS));
-            // check whether this is a 64-bit ART runtime
-            Log.e("Process.is64bit is: " + Process.is64Bit());
-            StructUtsname uts = Os.uname();
-            Log.e("uts.machine is: " + uts.machine);
-            Log.e("uts.version is: " + uts.version);
-            Log.e("uts.sysname is: " + uts.sysname);
-            // panic, this is a bug
-            throw e3;
-        }
-    }
-
-    private static void throwIfJniError(UnsatisfiedLinkError error) {
-        if (error.getMessage() != null && error.getMessage().contains("JNI_ERR")) {
-            throw error;
-        }
-    }
+    // If the method signature does not match the actual method signature, the behavior is undefined, eg, ART runtime aborts.
+    private static native Object invokeNonVirtualArtMethodImpl(@NonNull Member member, @NonNull String signature, @NonNull Class<?> klass, boolean isStatic,
+            @Nullable Object obj, @NonNull Object[] args) throws InvocationTargetException;
 
     /**
-     * Extract or update native library into "qa_dyn_lib" dir
+     * Invoke an instance method non-virtually, no CHA lookup is performed. No declaring class check is performed.
+     * <p>
+     * Caller is responsible for checking that the method declaration class matches the receiver object (aka "this").
      *
-     * @param libraryName library name without "lib" or ".so", eg. "qauxv", "mmkv"
+     * @param member         the method or constructor to invoke, method may be static or non-static method
+     * @param declaringClass the "effective" declaring class of the method
+     * @param obj            the object to invoke the method on, may be null if the method is static
+     * @param args           the arguments to pass to the method. may be null if no arguments are passed
+     * @return the return value of the method
+     * @throws InvocationTargetException if the method threw an exception
      */
-    static File extractNativeLibrary(Context ctx, String libraryName, String abi) throws IOError {
-        String soName = "lib" + libraryName + ".so." + BuildConfig.VERSION_CODE + "." + abi;
-        File dir = new File(ctx.getFilesDir(), "qa_dyn_lib");
-        if (!dir.isDirectory()) {
-            if (dir.isFile()) {
-                dir.delete();
-            }
-            dir.mkdir();
+    public static Object invokeNonVirtualArtMethodNoDeclaringClassCheck(@NonNull Member member, @NonNull Class<?> declaringClass,
+            @Nullable Object obj, @Nullable Object[] args) throws InvocationTargetException {
+        Objects.requireNonNull(member, "member must not be null");
+        Objects.requireNonNull(declaringClass, "declaringClass must not be null");
+        if (args == null) {
+            args = ArrayUtils.EMPTY_OBJECT_ARRAY;
         }
-        File soFile = new File(dir, soName);
-        if (!soFile.exists()) {
-            InputStream in = Natives.class.getClassLoader()
-                .getResourceAsStream("lib/" + abi + "/lib" + libraryName + ".so");
-            if (in == null) {
-                throw new UnsatisfiedLinkError("Unsupported ABI: " + abi);
-            }
-            //clean up old files
-            for (String name : dir.list()) {
-                if (name.startsWith("lib" + libraryName + "_")
-                    || name.startsWith("lib" + libraryName + ".so")) {
-                    new File(dir, name).delete();
-                }
-            }
-            try {
-                // extract so file
-                soFile.createNewFile();
-                FileOutputStream fout = new FileOutputStream(soFile);
-                byte[] buf = new byte[1024];
-                int i;
-                while ((i = in.read(buf)) > 0) {
-                    fout.write(buf, 0, i);
-                }
-                in.close();
-                fout.flush();
-                fout.close();
-            } catch (IOException ioe) {
-                try {
-                    in.close();
-                } catch (IOException ignored) {
-                }
-                // rethrow as error
-                throw new IOError(ioe);
+        // perform some basic checks
+        if (obj != null) {
+            if (!declaringClass.isInstance(obj)) {
+                throw new IllegalArgumentException("object class mismatch, expected " + declaringClass + ", got " + obj.getClass());
             }
         }
-        return soFile;
+        if (member instanceof Method) {
+            Method method = (Method) member;
+            if (method.getParameterTypes().length != args.length) {
+                throw new IllegalArgumentException("args length mismatch, expected " + method.getParameterTypes().length + ", got " + args.length);
+            }
+            // abstract method is not allowed
+            if ((method.getModifiers() & (Modifier.ABSTRACT)) != 0) {
+                throw new IllegalArgumentException("abstract method is not allowed");
+            }
+            boolean isStatic = Modifier.isStatic(method.getModifiers());
+            String signature = DexMethodDescriptor.getMethodTypeSig(method);
+            return invokeNonVirtualArtMethodImpl(member, signature, declaringClass, isStatic, obj, args);
+        } else if (member instanceof Constructor) {
+            Constructor<?> constructor = (Constructor<?>) member;
+            if (constructor.getParameterTypes().length != args.length) {
+                throw new IllegalArgumentException("args length mismatch, expected " + constructor.getParameterTypes().length + ", got " + args.length);
+            }
+            String signature = DexMethodDescriptor.getConstructorTypeSig(constructor);
+            return invokeNonVirtualArtMethodImpl(member, signature, declaringClass, false, obj, args);
+        } else {
+            throw new IllegalArgumentException("member must be a method or constructor");
+        }
     }
 
-    public static List<String> getAbiForLibrary() {
-        String[] supported = Process.is64Bit() ? Build.SUPPORTED_64_BIT_ABIS : Build.SUPPORTED_32_BIT_ABIS;
-        if (supported == null || supported.length == 0) {
-            throw new IllegalStateException("No supported ABI in this device");
-        }
-        List<String> result = new ArrayList<>(2);
-        List<String> abis = Arrays.asList("armeabi-v7a", "arm64-v8a", "x86", "x86_64");
-        for (String abi : supported) {
-            if (abis.contains(abi)) {
-                result.add(abi);
-            }
-        }
-        if (result.isEmpty()) {
-            throw new IllegalStateException("No supported ABI in " + Arrays.toString(supported));
-        } else {
-            return result;
-        }
-    }
 }

@@ -23,10 +23,18 @@
 package io.github.qauxv.util.hookstatus;
 
 import android.app.Application;
+import android.content.pm.ApplicationInfo;
 import android.os.Build;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import io.github.qauxv.BuildConfig;
 import io.github.qauxv.core.NativeCoreBridge;
+import io.github.qauxv.loader.hookapi.IClassLoaderHelper;
+import io.github.qauxv.loader.hookapi.ILoaderService;
+import io.github.qauxv.poststartup.StartupInfo;
 import io.github.qauxv.util.HostInfo;
-import io.github.qauxv.util.Natives;
+import io.github.qauxv.util.soloader.NativeLoader;
+import java.io.File;
 import org.lsposed.hiddenapibypass.HiddenApiBypass;
 
 public class ModuleAppImpl extends Application {
@@ -34,15 +42,84 @@ public class ModuleAppImpl extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
-        // init host info, even if we are not in the host app
+        StartupInfo.setInHostProcess(false);
+        // init host info, this is required for nearly all operations
         HostInfo.init(this);
         // load native library
-        Natives.load(this);
+        File dataDir = getDataDir();
+        ApplicationInfo ai = getApplicationInfo();
+        NativeLoader.loadPrimaryNativeLibrary(dataDir, ai);
+        NativeLoader.primaryNativeLibraryPreInitialize(dataDir, ai, false);
         // bypass hidden api check for current process
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             HiddenApiBypass.setHiddenApiExemptions("L");
         }
-        NativeCoreBridge.initNativeCore(getPackageName(), Build.VERSION.SDK_INT,
-                HostInfo.getHostInfo().getVersionName(), HostInfo.getHostInfo().getVersionCode());
+        // full initialize native core
+        NativeCoreBridge.initNativeCore();
+        initStartupInfo();
+        // for fail-safe purpose
+        com.github.kyuubiran.ezxhelper.utils.Log.INSTANCE.getCurrentLogger().setLogTag("QAuxv");
     }
+
+    private void initStartupInfo() {
+        final String apkPath = getApplicationInfo().sourceDir;
+        ILoaderService loaderService = new ILoaderService() {
+
+            // not used, just for compatibility
+            private IClassLoaderHelper mClassLoaderHelper;
+
+            @NonNull
+            @Override
+            public String getEntryPointName() {
+                return "ActivityThread";
+            }
+
+            @NonNull
+            @Override
+            public String getLoaderVersionName() {
+                return BuildConfig.VERSION_NAME;
+            }
+
+            @Override
+            public int getLoaderVersionCode() {
+                return BuildConfig.VERSION_CODE;
+            }
+
+            @NonNull
+            @Override
+            public String getMainModulePath() {
+                return apkPath;
+            }
+
+            @Override
+            public void log(@NonNull String msg) {
+                android.util.Log.i("QAuxv", msg);
+            }
+
+            @Override
+            public void log(@NonNull Throwable tr) {
+                android.util.Log.e("QAuxv", tr.toString(), tr);
+            }
+
+            @Nullable
+            @Override
+            public Object queryExtension(@NonNull String key, @Nullable Object... args) {
+                return null;
+            }
+
+            @Override
+            public void setClassLoaderHelper(@Nullable IClassLoaderHelper helper) {
+                mClassLoaderHelper = helper;
+            }
+
+            @Nullable
+            @Override
+            public IClassLoaderHelper getClassLoaderHelper() {
+                return mClassLoaderHelper;
+            }
+        };
+        StartupInfo.setModulePath(apkPath);
+        StartupInfo.setLoaderService(loaderService);
+    }
+
 }

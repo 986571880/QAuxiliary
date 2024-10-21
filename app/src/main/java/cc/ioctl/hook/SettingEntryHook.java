@@ -40,9 +40,9 @@ import cc.ioctl.util.HookUtils;
 import cc.ioctl.util.HostInfo;
 import cc.ioctl.util.LayoutHelper;
 import cc.ioctl.util.Reflex;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import io.github.qauxv.util.xpcompat.XC_MethodHook;
+import io.github.qauxv.util.xpcompat.XposedBridge;
+import io.github.qauxv.util.xpcompat.XposedHelpers;
 import io.github.qauxv.BuildConfig;
 import io.github.qauxv.R;
 import io.github.qauxv.activity.SettingsUiFragmentHostActivity;
@@ -103,9 +103,14 @@ public class SettingEntryHook extends BasePersistBackgroundHook {
             Class<?> kMainSettingConfigProvider = Initiator.loadClass("com.tencent.mobileqq.setting.main.MainSettingConfigProvider");
             Method getItemProcessList = Reflex.findSingleMethod(kMainSettingConfigProvider, List.class, false, Context.class);
             Class<?> kAbstractItemProcessor = Initiator.loadClass("com.tencent.mobileqq.setting.main.processor.AccountSecurityItemProcessor").getSuperclass();
+            // 8.9.70 ~ 9.0.0
             Class<?> kSimpleItemProcessor = Initiator.loadClass("com.tencent.mobileqq.setting.processor.g");
             if (kSimpleItemProcessor.getSuperclass() != kAbstractItemProcessor) {
-                throw new IllegalStateException("kSImpleItemProcessor.getSuperclass() != kAbstractItemProcessor");
+                // 9.0.8+
+                kSimpleItemProcessor = Initiator.loadClass("com.tencent.mobileqq.setting.processor.h");
+                if (kSimpleItemProcessor.getSuperclass() != kAbstractItemProcessor) {
+                    throw new IllegalStateException("kSImpleItemProcessor.getSuperclass() != kAbstractItemProcessor");
+                }
             }
             Method setOnClickListener;
             {

@@ -22,6 +22,8 @@
 
 package cc.ioctl.hook.msg;
 
+import static io.github.qauxv.util.HostInfo.requireMinQQVersion;
+
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
@@ -35,8 +37,6 @@ import cc.ioctl.util.HookUtils;
 import cc.ioctl.util.HostInfo;
 import cc.ioctl.util.Reflex;
 import cc.ioctl.util.ui.FaultyDialog;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
 import io.github.qauxv.R;
 import io.github.qauxv.activity.ShadowShareFileAgentActivity;
 import io.github.qauxv.base.annotation.FunctionHookEntry;
@@ -47,12 +47,15 @@ import io.github.qauxv.lifecycle.Parasitics;
 import io.github.qauxv.ui.ResUtils;
 import io.github.qauxv.util.Initiator;
 import io.github.qauxv.util.Log;
+import io.github.qauxv.util.QQVersion;
 import io.github.qauxv.util.SyncUtils;
 import io.github.qauxv.util.Toasts;
 import io.github.qauxv.util.dexkit.DefaultFileModel;
 import io.github.qauxv.util.dexkit.DexKit;
 import io.github.qauxv.util.dexkit.DexKitTarget;
 import io.github.qauxv.util.dexkit.FileBrowserActivity_InnerClass_onItemClick;
+import io.github.qauxv.util.xpcompat.XC_MethodHook;
+import io.github.qauxv.util.xpcompat.XposedBridge;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -108,11 +111,19 @@ public class FileShareExtHook extends CommonSwitchFunctionHook {
         // args
         Class<?> kFileBrowserModelBase = Initiator.loadClass("com.tencent.mobileqq.filemanager.fileviewer.model.FileBrowserModelBase");
         Class<?> kDefaultFileModel = DexKit.requireClassFromCache(DefaultFileModel.INSTANCE);
-        Class<?> kIFileViewerAdapter = Initiator.loadClassEither(
-                "com.tencent.mobileqq.filemanager.fileviewer.IFileViewerAdapter",
-                // QQ 8.9.0(3060)
-                "com.tencent.mobileqq.filemanager.fileviewer.h"
-        );
+        String fileViewerAdapterClassName;
+        if (requireMinQQVersion(QQVersion.QQ_9_1_5_BETA_20015)) {
+            fileViewerAdapterClassName = "com.tencent.mobileqq.filemanager.fileviewer.i";
+        } else if (requireMinQQVersion(QQVersion.QQ_9_0_80)) {
+            fileViewerAdapterClassName = "com.tencent.mobileqq.filemanager.fileviewer.h";
+        } else if (requireMinQQVersion(QQVersion.QQ_9_0_15)) {
+            fileViewerAdapterClassName = "com.tencent.mobileqq.filemanager.fileviewer.g";
+        } else if (requireMinQQVersion(QQVersion.QQ_8_9_0)) {
+            fileViewerAdapterClassName = "com.tencent.mobileqq.filemanager.fileviewer.h";
+        } else {
+            fileViewerAdapterClassName = "com.tencent.mobileqq.filemanager.fileviewer.IFileViewerAdapter";
+        }
+        Class<?> kIFileViewerAdapter = Initiator.loadClass(fileViewerAdapterClassName);
         kFileBrowserManager = Initiator.loadClassEither(
                 "com.tencent.mobileqq.filemanager.fileviewer.FileBrowserManager",
                 // QQ 8.9.0(3060)
@@ -127,11 +138,15 @@ public class FileShareExtHook extends CommonSwitchFunctionHook {
         List<Method> getShareSheetItemLists2List = ArraysKt.filter(kDefaultFileModel.getDeclaredMethods(), it -> {
             return it.getParameterTypes().length == 0 && it.getReturnType() == ArrayList[].class;
         });
-        Method onItemClick = Initiator.loadClassEither(
-                "com.tencent.mobileqq.filemanager.fileviewer.FileBrowserManager$2",
-                // QQ 8.9.0(3060)
-                "com.tencent.mobileqq.filemanager.fileviewer.a$b"
-        ).getDeclaredMethod("onItemClick", kActionSheetItem, kiShareActionSheet);
+        String fileBrowserManagerItemClassName;
+        if (requireMinQQVersion(QQVersion.QQ_9_0_15)) {
+            fileBrowserManagerItemClassName = "com.tencent.mobileqq.filemanager.fileviewer.FileBrowserManager$c";
+        } else if (requireMinQQVersion(QQVersion.QQ_8_9_0)) {
+            fileBrowserManagerItemClassName = "com.tencent.mobileqq.filemanager.fileviewer.a$b";
+        } else {
+            fileBrowserManagerItemClassName = "com.tencent.mobileqq.filemanager.fileviewer.FileBrowserManager$2";
+        }
+        Method onItemClick = Initiator.loadClass(fileBrowserManagerItemClassName).getDeclaredMethod("onItemClick", kActionSheetItem, kiShareActionSheet);
         XposedBridge.hookMethod(onItemClick, mItemClickHandler);
         Method mFileBrowserActivity_InnerClass_onItemClick = DexKit.loadMethodFromCache(FileBrowserActivity_InnerClass_onItemClick.INSTANCE);
         if (mFileBrowserActivity_InnerClass_onItemClick != null) {

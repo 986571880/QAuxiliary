@@ -28,6 +28,7 @@
 #include <string>
 #include <mutex>
 #include <vector>
+#include <array>
 #include <algorithm>
 #include <optional>
 #include <unistd.h>
@@ -79,15 +80,21 @@ void HandleLoadLibrary(const char* name, void* handle) {
     }
 }
 
-void RegisterLoadLibraryCallback(const LoadLibraryCallback& callback) {
+int RegisterLoadLibraryCallback(const LoadLibraryCallback& callback) {
+    if (!sHandleLoadLibraryCallbackInitialized) {
+        return -1;
+    }
     std::scoped_lock lock(sCallbacksMutex);
     sCallbacks.push_back(callback);
+    return 0;
 }
 
-static volatile bool sIsNativeInitialized = false;
+// true means native hook is ready, e.g dobby is used
+// this does not guarantee that the linker!do_dlopen is hooked
+static volatile bool sIsNativeHookInitialized = false;
 
 int CreateInlineHook(void* func, void* replace, void** backup) {
-    if (!sIsNativeInitialized) {
+    if (!sIsNativeHookInitialized) {
         LOGE("CreateInlineHook: native core is not initialized");
         return RS_FAILED;
     }
@@ -95,42 +102,114 @@ int CreateInlineHook(void* func, void* replace, void** backup) {
 }
 
 int DestroyInlineHook(void* func) {
-    if (!sIsNativeInitialized) {
+    if (!sIsNativeHookInitialized) {
         LOGE("DestroyInlineHook: native core is not initialized");
         return RS_FAILED;
     }
     return sNativeHookHandle.unhookFunction(func);
 }
 
-void* (* backup_do_dlopen)(const char* name, int flags, const void* extinfo, const void* caller) = nullptr;
+void* backup_do_dlopen = nullptr;
 
-void* fake_do_dlopen(const char* name, int flags, const void* extinfo, const void* caller) {
-    auto handle = backup_do_dlopen(name, flags, extinfo, caller);
+void* fake_do_dlopen_24(const char* name, int flags, const void* extinfo, const void* caller) {
+    auto* backup = (void* (*)(const char* name, int flags, const void* extinfo, const void* caller)) backup_do_dlopen;
+    auto handle = backup(name, flags, extinfo, caller);
     HandleLoadLibrary(name, handle);
     return handle;
 }
 
+void* fake_do_dlopen_23(const char* name, int flags, const void* extinfo) {
+    // below Android 7.0, the caller address is not passed to do_dlopen,
+    // because there is no linker namespace concept before Android 7.0
+    auto* backup = (void* (*)(const char* name, int flags, const void* extinfo)) backup_do_dlopen;
+    auto handle = backup(name, flags, extinfo);
+    HandleLoadLibrary(name, handle);
+    return handle;
+}
 
 void HookLoadLibrary() {
     using namespace utils;
-    LOGD("HookLoadLibrary: native load library callback is not initialized, hook ourselves");
+    LOGD("HookLoadLibrary: attempting to hook ld-android.so!__dl__Z9do_dlopenPKciPK17android_dlextinfo(PK?v)?");
     const char* soname;
+    // it's actually ld-android.so, not linker(64)
     if constexpr (sizeof(void*) == 8) {
         soname = "linker64";
     } else {
         soname = "linker";
     }
-    // __dl__Z9do_dlopenPKciPK17android_dlextinfoPKv
-    void* symbol = DobbySymbolResolver(soname, "__dl__Z9do_dlopenPKciPK17android_dlextinfoPKv");
+    ::utils::ProcessView processView;
+    int rc;
+    if ((rc = processView.readProcess(getpid())) != 0) {
+        LOGE("HookLoadLibrary: failed to read process, rc = {}", rc);
+        return;
+    }
+    const void* linkerBaseAddress = nullptr;
+    std::string linkerPath;
+    for (const auto& m: processView.getModules()) {
+        if (m.name == soname || m.name == "ld-android.so") {
+            linkerBaseAddress = reinterpret_cast<void*>(m.baseAddress);
+            linkerPath = m.path;
+            break;
+        }
+    }
+    if (linkerBaseAddress == nullptr || linkerPath.empty()) {
+        LOGE("HookLoadLibrary: failed to find linker module");
+        return;
+    }
+    FileMemMap linkerFileMap;
+    if ((rc = linkerFileMap.mapFilePath(linkerPath.c_str())) != 0) {
+        LOGE("HookLoadLibrary: failed to map linker file, rc = {}", rc);
+        return;
+    }
+    ::utils::ElfView linkerElfView;
+    linkerElfView.ParseFileMemMapping(linkerFileMap.getAddress(), linkerFileMap.getLength());
+    if (!linkerElfView.IsValid()) {
+        LOGE("HookLoadLibrary: failed to attach linker file");
+        return;
+    }
+    auto linkerSymbolResolver = [&](const char* symbol) -> void* {
+        auto offset = linkerElfView.GetSymbolOffset(symbol);
+        if (offset == 0) {
+            return nullptr;
+        }
+        return reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(linkerBaseAddress) + static_cast<uintptr_t>(offset));
+    };
+    bool isBelow24;
+    std::string symbolName;
+    struct SymbolInfo {
+        const char* symbolName;
+        bool isBelow24;
+    };
+    constexpr std::array symbolInfos = {
+            // Android 8.0+
+            SymbolInfo{"__dl__Z9do_dlopenPKciPK17android_dlextinfoPKv", false},
+            // Android 7.x
+            SymbolInfo{"__dl__Z9do_dlopenPKciPK17android_dlextinfoPv", false},
+            // Android 6.x
+            SymbolInfo{"__dl__Z9do_dlopenPKciPK17android_dlextinfo", true},
+    };
+    void* symbol = nullptr;
+    for (const auto& info: symbolInfos) {
+        symbol = linkerSymbolResolver(info.symbolName);
+        if (symbol != nullptr) {
+            symbolName = info.symbolName;
+            isBelow24 = info.isBelow24;
+            break;
+        }
+    }
     if (symbol == nullptr) {
-        LOGE("HookLoadLibrary: failed to find __dl__Z9do_dlopenPKciPK17android_dlextinfoPKv");
+        // give up
+        LOGE("HookLoadLibrary: failed to find __dl__Z9do_dlopenPKciPK17android_dlextinfo(PK?v)?");
         return;
     }
-    if (DobbyHook(symbol, (dobby_dummy_func_t) qauxv::fake_do_dlopen, (dobby_dummy_func_t*) &qauxv::backup_do_dlopen) != RS_SUCCESS) {
-        LOGE("HookLoadLibrary: failed to hook __dl__Z9do_dlopenPKciPK17android_dlextinfoPKv");
+    // LOGD("linker base {}, do_dlopen {}, path {}", linkerBaseAddress, symbol, linkerPath);
+    auto hookHandler = isBelow24 ? (dobby_dummy_func_t) fake_do_dlopen_23 : (dobby_dummy_func_t) fake_do_dlopen_24;
+    if (DobbyHook(symbol, hookHandler, (dobby_dummy_func_t*) &qauxv::backup_do_dlopen) != RS_SUCCESS) {
+        LOGE("HookLoadLibrary: failed to hook {} at {}", symbolName, symbol);
         return;
     }
-    LOGD("HookLoadLibrary: hooked __dl__Z9do_dlopenPKciPK17android_dlextinfoPKv");
+    sHandleLoadLibraryCallbackInitialized = true;
+    LOGD("HookLoadLibrary: hooked {}", symbolName);
 }
 
 void TraceError(JNIEnv* env, jobject thiz, std::string_view errMsg) {
@@ -265,42 +344,36 @@ void TraceError(JNIEnv* env, jobject thiz, std::string_view errMsg) {
     fnDetachCurrentThread();
 }
 
+static NativeLibraryInitMode sCurrentNativeLibraryInitMode = NativeLibraryInitMode::kNone;
+
+NativeLibraryInitMode GetCurrentNativeLibraryInitMode() {
+    return sCurrentNativeLibraryInitMode;
+}
+
+void SetCurrentNativeLibraryInitMode(NativeLibraryInitMode mode) {
+    auto current = sCurrentNativeLibraryInitMode;
+    if (current != mode && current != NativeLibraryInitMode::kNone) {
+        qauxv::utils::Abort(fmt::format("attempt to change current native library init mode from {} to {}", uint32_t(current), uint32_t(mode)));
+    }
+    sCurrentNativeLibraryInitMode = mode;
+}
+
 }
 
 // called by Xposed framework
-EXPORT extern "C" NativeOnModuleLoaded native_init(const NativeAPIEntries* entries) {
+EXPORT extern "C" [[maybe_unused]] NativeOnModuleLoaded native_init(const NativeAPIEntries* entries) {
     sNativeHookHandle.hookFunction = entries->hookFunc;
     sNativeHookHandle.unhookFunction = entries->unhookFunc;
     qauxv::sHandleLoadLibraryCallbackInitialized = true;
     return &qauxv::HandleLoadLibrary;
 }
 
-
-extern "C" JNIEXPORT void JNICALL
-Java_io_github_qauxv_core_NativeCoreBridge_initNativeCore(JNIEnv* env,
-                                                          jclass,
-                                                          jstring package_name,
-                                                          jint current_sdk_level,
-                                                          jstring version_name,
-                                                          jlong long_version_code) {
+void qauxv::InitializeNativeHookApi(bool allowHookLinker) {
     using namespace qauxv;
-    if (sIsNativeInitialized) {
+    if (sIsNativeHookInitialized) {
         LOGE("initNativeCore: native core is already initialized");
         return;
     }
-    auto packageName = JstringToString(env, package_name);
-    auto versionName = JstringToString(env, version_name);
-    if (!packageName.has_value() || !versionName.has_value()) {
-        LOGE("initNativeCore: failed to get package name or version name");
-        return;
-    }
-    JavaVM* vm = nullptr;
-    if (env->GetJavaVM(&vm) != JNI_OK) {
-        LOGE("initNativeCore: failed to get JavaVM");
-        return;
-    }
-    HostInfo::InitHostInfo(current_sdk_level, packageName.value(),
-                           versionName.value(), uint64_t(long_version_code), vm);
     if (sNativeHookHandle.hookFunction == nullptr) {
         LOGD("initNativeCore: native hook function is null, Dobby will be used");
         sNativeHookHandle.hookFunction = +[](void* func, void* replace, void** backup) {
@@ -310,10 +383,18 @@ Java_io_github_qauxv_core_NativeCoreBridge_initNativeCore(JNIEnv* env,
             return DobbyDestroy((void*) func);
         };
         if (!sHandleLoadLibraryCallbackInitialized) {
-            HookLoadLibrary();
+            if (allowHookLinker) {
+                HookLoadLibrary();
+            } else {
+                LOGD("No HandleLoadLibrary callback and linker hooking is disabled");
+            }
         }
     } else {
         LOGD("initNativeCore: native hook function is not null, use it directly");
     }
-    sIsNativeInitialized = true;
+    sIsNativeHookInitialized = true;
+}
+
+bool qauxv::IsNativeHookApiInitialized() {
+    return sIsNativeHookInitialized;
 }

@@ -33,8 +33,9 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
-import cc.ioctl.util.HostInfo;
+import cc.hicore.QApp.QAppUtils;
 import cc.ioctl.hook.file.BaseApk;
+import cc.ioctl.util.HostInfo;
 import io.github.qauxv.BuildConfig;
 import io.github.qauxv.R;
 import io.github.qauxv.config.ConfigManager;
@@ -44,21 +45,43 @@ import java.util.Locale;
 
 public class RikkaBaseApkFormatDialog {
 
-    private static final String DEFAULT_BASE_APK_FORMAT = "%n_%v.apk";
+    private static final String DEFAULT_BASE_APK_REGEX = "base(\\([0-9]+\\))?\\.apk";
+    private static final String DEFAULT_BASE_APK_FORMAT = "%n_%v.APK";
 
+    private static final String rq_base_apk_regex = "rq_base_apk_regex";
     private static final String rq_base_apk_format = "rq_base_apk_format";
     private static final String rq_base_apk_enabled = "rq_base_apk_enabled";
+    private static final String rq_base_apk_always_APK = "rq_base_apk_always_APK";
 
     @Nullable
     private AlertDialog dialog;
     @Nullable
     private LinearLayout vg;
 
+    private String currentRegex;
     private String currentFormat;
     private boolean enableBaseApk;
+    private boolean alwaysAPK;
 
     public static boolean IsEnabled() {
         return ConfigManager.getDefaultConfig().getBooleanOrFalse(rq_base_apk_enabled);
+    }
+
+    public static boolean IsAlwaysAPKEnabled() {
+        return ConfigManager.getDefaultConfig().getBooleanOrFalse(rq_base_apk_always_APK);
+    }
+
+    @Nullable
+    public static String getCurrentBaseApkRegex() {
+        ConfigManager cfg = ConfigManager.getDefaultConfig();
+        if (cfg.getBooleanOrFalse(rq_base_apk_enabled)) {
+            String val = cfg.getString(rq_base_apk_regex);
+            if (val == null) {
+                val = DEFAULT_BASE_APK_REGEX;
+            }
+            return val;
+        }
+        return null;
     }
 
     @Nullable
@@ -84,17 +107,43 @@ public class RikkaBaseApkFormatDialog {
         final Context ctx = dialog.getContext();
         vg = (LinearLayout) LayoutInflater.from(ctx).inflate(R.layout.rikka_base_apk_dialog, null);
         final TextView preview = vg.findViewById(R.id.textViewBaseApkPreview);
-        final TextView input = vg.findViewById(R.id.editTextBaseApkFormat);
+        final TextView regex = vg.findViewById(R.id.editTextBaseApkRegex);
+        final TextView format = vg.findViewById(R.id.editTextBaseApkFormat);
         final CheckBox enable = vg.findViewById(R.id.checkBoxEnableBaseApk);
+        final CheckBox always = vg.findViewById(R.id.checkBoxAlwaysAPK);
         final LinearLayout panel = vg.findViewById(R.id.layoutBaseApkPanel);
         enableBaseApk = ConfigManager.getDefaultConfig().getBooleanOrFalse(rq_base_apk_enabled);
         enable.setChecked(enableBaseApk);
+        if (!QAppUtils.isQQnt()) {
+            always.setVisibility(View.GONE);
+        } else {
+            alwaysAPK = ConfigManager.getDefaultConfig().getBooleanOrFalse(rq_base_apk_always_APK);
+            always.setChecked(alwaysAPK);
+        }
         panel.setVisibility(enableBaseApk ? View.VISIBLE : View.GONE);
+        currentRegex = ConfigManager.getDefaultConfig().getString(rq_base_apk_regex);
+        if (currentRegex == null) {
+            currentRegex = DEFAULT_BASE_APK_REGEX;
+        }
         currentFormat = ConfigManager.getDefaultConfig().getString(rq_base_apk_format);
         if (currentFormat == null) {
             currentFormat = DEFAULT_BASE_APK_FORMAT;
         }
-        input.addTextChangedListener(new TextWatcher() {
+        regex.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                currentRegex = s.toString();
+            }
+        });
+        format.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
             }
@@ -118,10 +167,14 @@ public class RikkaBaseApkFormatDialog {
                 preview.setText(result);
             }
         });
-        input.setText(currentFormat);
+        regex.setText(currentRegex);
+        format.setText(currentFormat);
         enable.setOnCheckedChangeListener((buttonView, isChecked) -> {
             enableBaseApk = isChecked;
             panel.setVisibility(enableBaseApk ? View.VISIBLE : View.GONE);
+        });
+        always.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            alwaysAPK = isChecked;
         });
         dialog.setView(vg);
         dialog.show();
@@ -133,9 +186,12 @@ public class RikkaBaseApkFormatDialog {
                         cfg.putBoolean(rq_base_apk_enabled, false);
                         done = true;
                     } else {
-                        if (currentFormat != null && currentFormat.length() > 0 && (
+                        if (currentFormat != null && !currentFormat.isEmpty() &&
+                                currentRegex != null && !currentRegex.isEmpty() && (
                                 currentFormat.contains("%n") || currentFormat.contains("%p"))) {
                             cfg.putBoolean(rq_base_apk_enabled, true);
+                            cfg.putBoolean(rq_base_apk_always_APK, alwaysAPK);
+                            cfg.putString(rq_base_apk_regex, currentRegex);
                             cfg.putString(rq_base_apk_format, currentFormat);
                             done = true;
                         } else {

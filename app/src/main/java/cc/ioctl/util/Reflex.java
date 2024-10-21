@@ -24,15 +24,17 @@ package cc.ioctl.util;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import de.robv.android.xposed.XposedBridge;
+import io.github.qauxv.util.xpcompat.XposedBridge;
 import io.github.qauxv.util.Natives;
 import io.github.qauxv.util.dexkit.DexMethodDescriptor;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -1503,4 +1505,100 @@ public class Reflex {
         int p = name.lastIndexOf('.');
         return name.substring(p + 1);
     }
+
+    @NonNull
+    public static Member virtualMethodLookup(@NonNull Member member, @Nullable Object thiz) {
+        Objects.requireNonNull(member, "member == null");
+        if (member instanceof Method) {
+            return virtualMethodLookup((Method) member, thiz);
+        } else {
+            return member;
+        }
+    }
+
+    public static boolean isClassArrayEquals(Class<?>[] a, Class<?>[] b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        if (a.length != b.length) {
+            return false;
+        }
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] != b[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @NonNull
+    public static Method virtualMethodLookup(@NonNull Method method, @Nullable Object thiz) {
+        if ((method.getModifiers() & (Modifier.STATIC | Modifier.PRIVATE)) != 0) {
+            // direct method
+            return method;
+        }
+        if (thiz == null) {
+            throw new NullPointerException("thiz == null");
+        }
+        Class<?> current = thiz.getClass();
+        Class<?> declaringClass = method.getDeclaringClass();
+        // check class
+        declaringClass.cast(thiz);
+        Class<?> returnType = method.getReturnType();
+        String name = method.getName();
+        Class<?>[] argt = method.getParameterTypes();
+        // start lookup
+        do {
+            Method[] methods = current.getDeclaredMethods();
+            // only compare virtual methods(non-static and non-private)
+            for (Method value : methods) {
+                boolean isVirtual = !Modifier.isStatic(value.getModifiers()) && !Modifier.isPrivate(value.getModifiers());
+                if (isVirtual && value.getName().equals(name) && returnType == value.getReturnType()) {
+                    if (isClassArrayEquals(value.getParameterTypes(), argt)) {
+                        return value;
+                    }
+                }
+            }
+            // TODO: 2024-08-04 support interface default method
+            // stop at declaring class
+        } while ((current = current.getSuperclass()) != null && current != declaringClass);
+        return method;
+    }
+
+
+    public static void dumpClassLoaderRecursive(ClassLoader cl) {
+        HashSet<ClassLoader> dumped = new HashSet<>();
+        int[] id = new int[1];
+        dumpClassLoaderRecursive(cl, dumped, id);
+    }
+
+    public static void dumpClassLoaderRecursive(ClassLoader cl, HashSet<ClassLoader> dumped, int[] id) {
+        if (cl == null) {
+            return;
+        }
+        ClassLoader parent = cl.getParent();
+        Class<?> klass = cl.getClass();
+        String objectName = objectToString(cl);
+        String toString = cl.toString();
+        dumped.add(cl);
+        int thisId = id[0]++;
+        XposedBridge.log("ClassLoader [" + thisId + "] " + objectName + " -> " + toString + "\n"
+                + " --> parent: " + objectToString(parent) + "\n"
+                + " --> $class.classLoader: " + objectToString(klass.getClassLoader()));
+        if (parent != null && !dumped.contains(parent)) {
+            dumpClassLoaderRecursive(parent, dumped, id);
+        }
+        if (klass.getClassLoader() != null && !dumped.contains(klass.getClassLoader())) {
+            dumpClassLoaderRecursive(klass.getClassLoader(), dumped, id);
+        }
+    }
+
+    public static String objectToString(Object o) {
+        if (o == null) {
+            return "null";
+        } else {
+            return o.getClass().getName() + "@" + Integer.toHexString(System.identityHashCode(o));
+        }
+    }
+
 }

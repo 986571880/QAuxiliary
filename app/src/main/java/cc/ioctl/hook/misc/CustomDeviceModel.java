@@ -29,9 +29,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import cc.ioctl.dialog.RikkaCustomDeviceModelDialog;
 import cc.ioctl.util.HostInfo;
-import de.robv.android.xposed.XC_MethodReplacement;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import io.github.qauxv.util.xpcompat.XC_MethodReplacement;
+import io.github.qauxv.util.xpcompat.XposedBridge;
+import io.github.qauxv.util.xpcompat.XposedHelpers;
 import io.github.qauxv.base.IUiItemAgent;
 import io.github.qauxv.base.annotation.FunctionHookEntry;
 import io.github.qauxv.base.annotation.UiItemAgentEntry;
@@ -54,7 +54,7 @@ public class CustomDeviceModel extends CommonConfigFunctionHook {
     public static final CustomDeviceModel INSTANCE = new CustomDeviceModel();
 
     private CustomDeviceModel() {
-        super(SyncUtils.PROC_MAIN | SyncUtils.PROC_MSF | SyncUtils.PROC_QZONE);
+        super(SyncUtils.PROC_ANY);
     }
 
     @NonNull
@@ -119,6 +119,21 @@ public class CustomDeviceModel extends CommonConfigFunctionHook {
                 });
             }
         }
+
+        // 适配新DeviceInfoManager
+        Class<?> devInfoMonitorClazz = Initiator.load("com.tencent.qmethod.pandoraex.monitor.DeviceInfoMonitor");
+        if(devInfoMonitorClazz != null) {
+            Method getModelMethod = XposedHelpers.findMethodExactIfExists(devInfoMonitorClazz, "getModel");
+            if(getModelMethod != null) {
+                XposedBridge.hookMethod(getModelMethod, new XC_MethodReplacement() {
+                    @Override
+                    protected Object replaceHookedMethod(MethodHookParam param) {
+                        return targetModel;
+                    }
+                });
+            }
+        }
+
         return true;
     }
 

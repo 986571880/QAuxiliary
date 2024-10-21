@@ -24,6 +24,7 @@ package me.ketal.hook
 
 import android.annotation.SuppressLint
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TabHost
@@ -31,17 +32,24 @@ import android.widget.TextView
 import androidx.core.view.get
 import androidx.core.view.plusAssign
 import cc.ioctl.hook.sideswipe.SimplifyQQSettingMe
+import com.github.kyuubiran.ezxhelper.utils.findViewByCondition
 import com.github.kyuubiran.ezxhelper.utils.setViewZeroSize
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.dsl.FunctionEntryRouter
 import io.github.qauxv.hook.CommonSwitchFunctionHook
 import io.github.qauxv.tlb.ConfigTable
+import io.github.qauxv.util.Initiator
 import io.github.qauxv.util.QQVersion
 import io.github.qauxv.util.isTim
 import io.github.qauxv.util.requireMinQQVersion
-import me.ketal.util.findViewByType
-import xyz.nextalone.util.*
+import xyz.nextalone.util.clazz
+import xyz.nextalone.util.get
+import xyz.nextalone.util.hookAfterAllConstructors
+import xyz.nextalone.util.hookBefore
+import xyz.nextalone.util.hostDrawable
+import xyz.nextalone.util.hostLayout
+import xyz.nextalone.util.throwOrTrue
 
 @SuppressLint("StaticFieldLeak")
 @FunctionHookEntry
@@ -62,14 +70,17 @@ object HideTab : CommonSwitchFunctionHook() {
             if (m.name == "setOnTabSelectionListener") {
                 m.hookBefore(this) {
                     tab = it.thisObject as TabHost
-                    val blur = tab.findViewByType("com.tencent.mobileqq.widget.QQBlurView".clazz!!) as View
                     tab.tabWidget.setViewZeroSize()
-                    blur.setViewZeroSize()
+                    (tab.tabWidget.parent as ViewGroup).findViewByCondition { view ->
+                        val blurViewWrapperClass = Initiator.loadClass("com.tencent.qui.quiblurview.QQBlurViewWrapper")
+                        blurViewWrapperClass.isAssignableFrom(view::class.java)
+                    }?.setViewZeroSize()
                 }
             }
         }
-        (if (requireMinQQVersion(QQVersion.QQ_8_9_25)) "com.tencent.mobileqq.activity.QQSettingMeView" else
-            "com.tencent.mobileqq.activity.QQSettingMe").clazz?.hookAfterAllConstructors {
+        (if (requireMinQQVersion(QQVersion.QQ_8_9_90)) "com.tencent.mobileqq.QQSettingMeView"
+        else if (requireMinQQVersion(QQVersion.QQ_8_9_25)) "com.tencent.mobileqq.activity.QQSettingMeView"
+        else "com.tencent.mobileqq.activity.QQSettingMe").clazz?.hookAfterAllConstructors {
             if (!isEnabled) return@hookAfterAllConstructors
             val midContentName = ConfigTable.getConfig<String>(SimplifyQQSettingMe.MidContentName)
             val linearLayout = if (requireMinQQVersion(QQVersion.QQ_8_6_5)) {
@@ -77,13 +88,13 @@ object HideTab : CommonSwitchFunctionHook() {
             } else {
                 it.thisObject.get(midContentName, View::class.java) as LinearLayout
             } ?: return@hookAfterAllConstructors
-            addSettingItem(linearLayout, "skin_tab_icon_conversation_normal", "消息") {
+            addSettingItem(linearLayout, "skin_tab_icon_conversation_normal_simple", "消息") {
                 tab.currentTab = 0
             }
-            addSettingItem(linearLayout, "skin_tab_icon_contact_normal", "联系人") {
+            addSettingItem(linearLayout, "skin_tab_icon_contact_normal_simple", "联系人") {
                 tab.currentTab = tab.tabWidget.tabCount - 2
             }
-            addSettingItem(linearLayout, "skin_tab_icon_plugin_normal", "动态") {
+            addSettingItem(linearLayout, "skin_tab_icon_plugin_normal_simple", "动态") {
                 tab.currentTab = tab.tabWidget.tabCount - 1
             }
         }
@@ -91,12 +102,24 @@ object HideTab : CommonSwitchFunctionHook() {
 
     private fun addSettingItem(linearLayout: LinearLayout, resName: String, label: String, clickListener: View.OnClickListener) {
         val ctx = linearLayout.context
-        val view = View.inflate(ctx, ctx.hostLayout("b2g")!!, null) as LinearLayout
-        val imgView = view[0] as ImageView
-        val textView = view[1] as TextView
-        imgView.setImageResource(ctx.hostDrawable(resName)!!)
-        textView.text = label
-        view.setOnClickListener(clickListener)
-        linearLayout += view
+        if (requireMinQQVersion(QQVersion.QQ_9_0_20)) {
+            val view = View.inflate(ctx, ctx.hostLayout("qq_setting_me_item")!!, null) as LinearLayout
+            (view[0] as ImageView).setImageResource(ctx.hostDrawable(resName)!!)
+            ((view[1] as LinearLayout)[0] as TextView).text = label
+            view.setOnClickListener(clickListener)
+            linearLayout += view
+        } else if (requireMinQQVersion(QQVersion.QQ_8_9_90)) {
+            val view = View.inflate(ctx, ctx.hostLayout("qq_setting_me_item")!!, null) as LinearLayout
+            (view[0] as ImageView).setImageResource(ctx.hostDrawable(resName)!!)
+            (view[1] as TextView).text = label
+            view.setOnClickListener(clickListener)
+            linearLayout += view
+        } else {
+            val view = View.inflate(ctx, ctx.hostLayout("b2g")!!, null) as LinearLayout
+            (view[0] as ImageView).setImageResource(ctx.hostDrawable(resName)!!)
+            (view[1] as TextView).text = label
+            view.setOnClickListener(clickListener)
+            linearLayout += view
+        }
     }
 }

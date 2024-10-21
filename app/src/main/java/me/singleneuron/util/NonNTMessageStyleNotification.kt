@@ -43,10 +43,10 @@ import cc.chenhe.qqnotifyevo.utils.NotifyChannel
 import cc.chenhe.qqnotifyevo.utils.getChannelId
 import cc.ioctl.util.Reflex
 import cc.ioctl.util.hookAfterIfEnabled
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XC_MethodReplacement
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import io.github.qauxv.util.xpcompat.XC_MethodHook
+import io.github.qauxv.util.xpcompat.XC_MethodReplacement
+import io.github.qauxv.util.xpcompat.XposedBridge
+import io.github.qauxv.util.xpcompat.XposedHelpers
 import io.github.qauxv.bridge.AppRuntimeHelper
 import io.github.qauxv.bridge.ChatActivityFacade
 import io.github.qauxv.bridge.SessionInfoImpl
@@ -151,7 +151,7 @@ class NonNTMessageStyleNotification(private val parent: MessagingStyleNotificati
             val builder = NotificationCompat.Builder(context, oldNotification)
                 .setContentTitle(null)
                 .setContentText(null)
-                .setLargeIcon(null)
+                .setLargeIcon(null as Bitmap?)
                 .setStyle(messageStyle)
             if (isTroop == 1) {
                 builder.setLargeIcon(bitmap)

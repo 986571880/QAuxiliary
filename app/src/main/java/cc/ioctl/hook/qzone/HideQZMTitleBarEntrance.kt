@@ -25,9 +25,12 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import cc.ioctl.util.HookUtils.hookBeforeIfEnabled
 import cc.ioctl.util.Reflex
 import cc.ioctl.util.hookAfterIfEnabled
+import cc.ioctl.util.hookBeforeIfEnabled
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
+import io.github.qauxv.util.xpcompat.XC_MethodHook.MethodHookParam
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.dsl.FunctionEntryRouter
@@ -37,6 +40,7 @@ import io.github.qauxv.util.QQVersion
 import io.github.qauxv.util.SyncUtils
 import io.github.qauxv.util.dexkit.DexKit
 import io.github.qauxv.util.dexkit.NQZMoment_EntranceEnabled
+import io.github.qauxv.util.dexkit.QZoneFeedxTopEntranceMethod
 import io.github.qauxv.util.requireMinQQVersion
 
 /**
@@ -45,17 +49,24 @@ import io.github.qauxv.util.requireMinQQVersion
 @[FunctionHookEntry UiItemAgentEntry]
 object HideQZMTitleBarEntrance : CommonSwitchFunctionHook(
     targetProc = SyncUtils.PROC_MAIN or SyncUtils.PROC_QZONE,
-    targets = arrayOf(NQZMoment_EntranceEnabled)
+    targets = arrayOf(NQZMoment_EntranceEnabled, QZoneFeedxTopEntranceMethod)
 ) {
 
-    override val name = "隐藏QQ空间此刻按钮"
+    override val name = "隐藏QQ空间动态的\"此刻\""
 
-    override val description = "隐藏QQ空间动态顶端的\"此刻\"按钮, 未经测试"
+    override val description = "隐藏QQ空间动态的\"此刻\"按钮或横幅"
 
     // currently experimental
     override val uiItemLocation = FunctionEntryRouter.Locations.Simplify.UI_MISC
 
     override val isAvailable: Boolean get() = requireMinQQVersion(QQVersion.QQ_8_9_25)
+
+    private val qZoneFeedxTopEntranceMethodName = when {
+        requireMinQQVersion(QQVersion.QQ_9_0_30) -> "c0"
+        requireMinQQVersion(QQVersion.QQ_9_0_25) -> "e0"
+        requireMinQQVersion(QQVersion.QQ_9_0_20) -> "f0"
+        else -> "e0"
+    }
 
     override fun initOnce(): Boolean {
         try {
@@ -78,6 +89,21 @@ object HideQZMTitleBarEntrance : CommonSwitchFunctionHook(
             }
         } catch (_: Exception) {
             DexKit.requireMethodFromCache(NQZMoment_EntranceEnabled).hookBefore { it.result = false }
+        }
+
+        try {
+            val qZoneFeedxTopEntranceClass = Initiator.loadClass("com.qzone.reborn.feedx.widget.entrance.QZoneFeedxTopEntranceManagerView;")
+            val qZoneFeedxTopEntranceMethod = qZoneFeedxTopEntranceClass.getDeclaredMethod(qZoneFeedxTopEntranceMethodName)
+            hookBeforeIfEnabled(this, qZoneFeedxTopEntranceMethod) { param: MethodHookParam ->
+                val obj = param.thisObject as View
+                obj.isClickable = false
+                param.setResult(null)
+            }
+        } catch (_: Exception) {
+            hookBeforeIfEnabled(DexKit.requireMethodFromCache(QZoneFeedxTopEntranceMethod)){
+                (it.thisObject as View).isClickable = false
+                it.result = null
+            }
         }
         return true
     }

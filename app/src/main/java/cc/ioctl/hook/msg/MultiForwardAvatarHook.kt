@@ -24,15 +24,16 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.DialogInterface
 import android.text.Spanned
-import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
+import android.widget.TextView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.text.buildSpannedString
+import androidx.core.text.method.LinkMovementMethodCompat
 import cc.hicore.QApp.QAppUtils
 import cc.ioctl.hook.profile.OpenProfileCard
 import cc.ioctl.util.HostInfo
@@ -43,7 +44,6 @@ import cc.ioctl.util.hookBeforeIfEnabled
 import cc.ioctl.util.ui.FaultyDialog
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import com.tencent.qqnt.kernel.nativeinterface.MsgRecord
-import de.robv.android.xposed.XC_MethodHook.MethodHookParam
 import io.github.qauxv.R
 import io.github.qauxv.base.annotation.DexDeobfs
 import io.github.qauxv.base.annotation.FunctionHookEntry
@@ -66,6 +66,7 @@ import io.github.qauxv.util.dexkit.DexKitFinder
 import io.github.qauxv.util.dexkit.DexKitTargetSealedEnum.nameOf
 import io.github.qauxv.util.dexkit.Multiforward_Avatar_setListener_NT
 import io.github.qauxv.util.requireMinQQVersion
+import io.github.qauxv.util.xpcompat.XC_MethodHook.MethodHookParam
 import me.ketal.dispacher.BaseBubbleBuilderHook
 import me.ketal.dispacher.OnBubbleBuilder
 import me.singleneuron.data.MsgRecordData
@@ -90,15 +91,19 @@ object MultiForwardAvatarHook : CommonSwitchFunctionHook(arrayOf(CAIOUtils, Mult
     override fun doFind(): Boolean {
         getCurrentBackend().use { backend ->
             val dexKit = backend.getDexKitBridge()
-            val m = dexKit.findMethodCaller {
-                callerMethodDeclareClass = "com.tencent.mobileqq.aio.msglist.holder.component.avatar.AIOAvatarContentComponent"
-                callerMethodReturnType = "V"
-                callerMethodParameterTypes = emptyArray()
-                methodName = "setOnClickListener"
+            val m = dexKit.findMethod {
+                matcher {
+                    declaredClass = "com.tencent.mobileqq.aio.msglist.holder.component.avatar.AIOAvatarContentComponent"
+                    returnType = "void"
+                    paramTypes(*arrayOf<Class<*>>())
+                    addInvoke {
+                        name = "setOnClickListener"
+                    }
+                }
             }
             if (m.size != 1) return false
-            Log.d("save id: " + nameOf(Multiforward_Avatar_setListener_NT) + ",method: " + m.keys.first().descriptor)
-            Multiforward_Avatar_setListener_NT.descCache = m.keys.first().descriptor
+            Log.d("save id: " + nameOf(Multiforward_Avatar_setListener_NT) + ",method: " + m.first().descriptor)
+            Multiforward_Avatar_setListener_NT.descCache = m.first().descriptor
             return true
         }
     }
@@ -137,12 +142,16 @@ object MultiForwardAvatarHook : CommonSwitchFunctionHook(arrayOf(CAIOUtils, Mult
     @SuppressLint("DiscouragedApi")
     @Throws(Exception::class)
     public override fun initOnce(): Boolean {
-        if (requireMinQQVersion(QQVersion.QQ_8_9_63)) {
+        if (requireMinQQVersion(QQVersion.QQ_8_9_63_BETA_11345)) {
             val clz = Initiator.loadClass("com.tencent.mobileqq.aio.msglist.holder.component.avatar.AIOAvatarContentComponent")
             // 设置头像点击和长按事件的方法
             DexKit.requireMethodFromCache(Multiforward_Avatar_setListener_NT).hookBefore { param ->
                 var layout: RelativeLayout?
-                clz.declaredFields.single { it.name == "h" }.let {
+                clz.declaredFields.single {//Lazy avatarContainer
+                    it.name == if (requireMinQQVersion(QQVersion.QQ_9_0_90)) "h"
+                    else if (requireMinQQVersion(QQVersion.QQ_9_0_65)) "i"
+                    else "h"
+                }.let {
                     it.isAccessible = true  //Lazy
                     layout = (it.get(param.thisObject))!!.invoke("getValue") as RelativeLayout
                 }
@@ -274,6 +283,8 @@ object MultiForwardAvatarHook : CommonSwitchFunctionHook(arrayOf(CAIOUtils, Mult
         // 2023.7.20 NT版收到的合并转发中群号变为0
         // 2023.8.1 收到的合并转发中群号变为284840486
         val isTroopUinAvailable = troopUin != null && troopUin != 0L && troopUin != 284840486L
+        // 2023-09-06 起合并转发中 senderUin 变为 1094950020
+        val isSenderUinAvailable = senderUin != 0L && senderUin != 1094950020L
         val ctx = CommonContextWrapper.createAppCompatContext(hostContext)
         val dialog = CustomDialog.createFailsafe(ctx).setTitle(Reflex.getShortClassName(msg))
             .setPositiveButton("确认", null).setCancelable(true)
@@ -293,26 +304,36 @@ object MultiForwardAvatarHook : CommonSwitchFunctionHook(arrayOf(CAIOUtils, Mult
             } else {
                 HostStyledViewBuilder.newDialogClickableItem(ctx, "群号", "已被服务器端屏蔽", null, null, ll, true)
             }
-            HostStyledViewBuilder.newDialogClickableItemClickToCopy(ctx, "成员", senderUin.toString(), ll, true) {
-                if (senderUin > 10000) {
-                    OpenProfileCard.openUserProfileCard(ctx, senderUin)
+            if (isSenderUinAvailable) {
+                HostStyledViewBuilder.newDialogClickableItemClickToCopy(ctx, "成员", senderUin.toString(), ll, true) {
+                    if (senderUin > 10000) {
+                        OpenProfileCard.openUserProfileCard(ctx, senderUin)
+                    }
                 }
+            } else {
+                HostStyledViewBuilder.newDialogClickableItem(ctx, "成员", "已被服务器端屏蔽", null, null, ll, true)
             }
         } else {
             // private chat
-            HostStyledViewBuilder.newDialogClickableItemClickToCopy(ctx, "发送者", senderUin.toString(), ll, true) {
-                if (senderUin > 10000) {
-                    OpenProfileCard.openUserProfileCard(ctx, senderUin)
+            if (isSenderUinAvailable) {
+                HostStyledViewBuilder.newDialogClickableItemClickToCopy(ctx, "发送者", senderUin.toString(), ll, true) {
+                    if (senderUin > 10000) {
+                        OpenProfileCard.openUserProfileCard(ctx, senderUin)
+                    }
                 }
+            } else {
+                HostStyledViewBuilder.newDialogClickableItem(ctx, "发送者", "已被服务器端屏蔽", null, null, ll, true)
             }
         }
         val disclaimerTextView = AppCompatTextView(ctx).apply {
             // required for ClickableSpan
-            movementMethod = LinkMovementMethod.getInstance()
+            movementMethod = LinkMovementMethodCompat.getInstance()
         }
         val runnable = {
             val disclaimer = """
                 警告：以上信息可能是完全错误的。
+                问: “已被服务器端屏蔽”是什么意思？ 
+                答：QQ 服务器端屏蔽（和谐）了该信息，因此无法获取，我也没有办法。
                 QQ 的合并转发消息内容是由转发者的客户端生成后上传服务器的，而不是在服务器上合并后再下发的。
                 因此，合并转发消息的内容存在被篡改和伪造的可能。
                 在非恶意情形下，PC 端 QQ 在合并转发提供的群号可能是错误的，而 Android 端 QQ 合并转发提供的群号通常是正确的。
@@ -322,6 +343,7 @@ object MultiForwardAvatarHook : CommonSwitchFunctionHook(arrayOf(CAIOUtils, Mult
         }
         disclaimerTextView.text = buildSpannedString {
             append("单击可打开，长按可复制\n")
+            append("问: “已被服务器端屏蔽”是什么意思？ \n答：QQ 服务器端屏蔽（和谐）了该信息，因此无法获取，我也没有办法。\n")
             append("以上信息仅供参考，本模块不对以上信息的正确性负责，以上信息不得作为任何依据。\n")
             append("了解详情", object : ClickableSpan() {
                 override fun onClick(widget: View) {
@@ -340,9 +362,15 @@ object MultiForwardAvatarHook : CommonSwitchFunctionHook(arrayOf(CAIOUtils, Mult
             Log.e("createAndShowDialogForDetail/E msg == null")
             return
         }
-        CustomDialog.createFailsafe(ctx).setTitle(Reflex.getShortClassName(msg))
+        CustomDialog.createFailsafe(ctx)
+            .setTitle(Reflex.getShortClassName(msg))
             .setMessage(msg.toString())
-            .setCancelable(true).setPositiveButton("确定", null).show()
+            .setCancelable(true)
+            .setPositiveButton("确定", null)
+            .show()
+            .apply {
+                findViewById<TextView>(android.R.id.message).setTextIsSelectable(true)
+            }
     }
 
     private val isLeftCheckBoxVisible: Boolean

@@ -10,10 +10,12 @@ object Version {
     val buildToolsVersion = findBuildToolsVersion()
     const val minSdk = 24
     const val targetSdk = 34
-    const val versionName = "1.4.3"
+    const val versionName = "1.5.4"
 
-    private const val defaultNdkVersion = "25.1.8937393"
-    private const val defaultCMakeVersion = "3.22.1"
+    private const val defaultNdkVersion = "27.0.12077973"
+
+    // LSPlant requires CMake 3.28.0+ to build
+    private const val defaultCMakeVersion = "3.28.0+"
 
     fun getNdkVersion(project: Project): String {
         val prop = getLocalProperty(project, "qauxv.override.ndk.version")
@@ -33,7 +35,7 @@ object Version {
         return prop ?: env ?: defaultCMakeVersion
     }
 
-    private fun getLocalProperty(project: Project, propertyName: String): String? {
+    fun getLocalProperty(project: Project, propertyName: String): String? {
         val rootProject = project.rootProject
         val localProp = File(rootProject.projectDir, "local.properties")
         if (!localProp.exists()) {
@@ -51,8 +53,9 @@ object Version {
     }
 
     private fun findBuildToolsVersion(): String {
-        val defaultBuildToolsVersion = "33.0.2" // 33.0.0 AIDL is broken on Windows
-        return File(System.getenv("ANDROID_HOME"), "build-tools").listFiles()?.filter { it.isDirectory }?.maxOfOrNull { it.name }?.also { println("Using build tools version $it") }
+        val defaultBuildToolsVersion = "34.0.0" // AGP 8.2.0 need Build Tools 34.0.0
+        return File(System.getenv("ANDROID_HOME"), "build-tools").listFiles()?.filter { it.isDirectory }?.maxOfOrNull { it.name }
+            ?.also { println("Using build tools version $it") }
             ?: defaultBuildToolsVersion
     }
 }

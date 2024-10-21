@@ -38,7 +38,7 @@ import cc.ioctl.util.HostInfo
 import cc.ioctl.util.ui.FaultyDialog
 import com.tencent.qqnt.kernel.nativeinterface.MsgRecord
 import com.tencent.qqnt.kernel.nativeinterface.TextElement
-import de.robv.android.xposed.XC_MethodHook
+import io.github.qauxv.util.xpcompat.XC_MethodHook
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.bridge.ntapi.ChatTypeConstants
@@ -50,6 +50,7 @@ import io.github.qauxv.step.Step
 import io.github.qauxv.ui.CommonContextWrapper
 import io.github.qauxv.util.Initiator
 import io.github.qauxv.util.Log
+import io.github.qauxv.util.QQVersion
 import io.github.qauxv.util.Toasts
 import io.github.qauxv.util.dexkit.DexDeobfsProvider
 import io.github.qauxv.util.dexkit.DexFlow
@@ -58,10 +59,11 @@ import io.github.qauxv.util.dexkit.DexMethodDescriptor
 import io.github.qauxv.util.dexkit.HostMainDexHelper
 import io.github.qauxv.util.hostInfo
 import io.github.qauxv.util.isTim
-import io.luckypray.dexkit.annotations.DexKitExperimentalApi
+import io.github.qauxv.util.requireMinQQVersion
 import me.ketal.dispacher.BaseBubbleBuilderHook
 import me.ketal.dispacher.OnBubbleBuilder
 import me.singleneuron.data.MsgRecordData
+import org.luckypray.dexkit.query.enums.StringMatchType
 import xyz.nextalone.util.SystemServiceUtils
 import xyz.nextalone.util.clazz
 import xyz.nextalone.util.findHostView
@@ -140,7 +142,7 @@ object ShowMsgAt : CommonSwitchFunctionHook(), OnBubbleBuilder, DexKitFinder {
         // BTN: OK, COPY
         AlertDialog.Builder(ctx)
             .setTitle("未知的 UID")
-            .setMessage(uid)
+            .setMessage(uid + "\n如果您是第一次遇到此情况，建议您在右上角打开群资料卡后点开群聊成员列表，并等待其全部加载完成后返回重试。")
             .setPositiveButton("确认") { _, _ -> }
             .setNegativeButton("复制") { _, _ ->
                 SystemServiceUtils.copyToClipboard(ctx, uid)
@@ -172,12 +174,14 @@ object ShowMsgAt : CommonSwitchFunctionHook(), OnBubbleBuilder, DexKitFinder {
     private fun setAtSpanBySearch(textView: TextView, atElements: List<TextElement>, troopUin: Long) {
         val text = textView.text
         val ssb = SpannableString(text)
+        var searchIndexStart = 0
         for (at in atElements) {
             if (at.content.length >= 2) {
                 val uid = at.atNtUid
-                val start = text.indexOf(at.content)
+                val start = text.indexOf(at.content, searchIndexStart)
                 if (start == -1) continue
                 val end = start + at.content.length
+                searchIndexStart = end
                 ssb.setSpan(createClickSpanForUid(uid, troopUin), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
@@ -240,7 +244,6 @@ object ShowMsgAt : CommonSwitchFunctionHook(), OnBubbleBuilder, DexKitFinder {
             return QAppUtils.isQQnt() && mTextViewId == 0
         }
 
-    @OptIn(DexKitExperimentalApi::class)
     override fun doFind(): Boolean {
         val fnSaveResult = { id: Int ->
             val hostVersion = hostInfo.versionCode32
@@ -251,8 +254,27 @@ object ShowMsgAt : CommonSwitchFunctionHook(), OnBubbleBuilder, DexKitFinder {
         // step 1 find target class
         // "Lcom/tencent/mobileqq/aio/msglist/holder/component/text/util/TextContentViewUtil;"
         val result = DexDeobfsProvider.getCurrentBackend().use {
-            it.getDexKitBridge().findClassUsingAnnotation {
-                annotationUsingString = "Lcom/tencent/mobileqq/aio/msglist/holder/component/text/util/TextContentViewUtil;"
+            it.getDexKitBridge().findClass {
+                matcher {
+                    if (requireMinQQVersion(QQVersion.QQ_9_0_60)) {
+                        usingStrings("TextContentViewUtil")
+                    } else {
+                        addAnnotation {
+                            type = "kotlin.Metadata"
+                            addElement {
+                                name = "d2"
+                                value {
+                                    arrayValue {
+                                        addString(
+                                            "Lcom/tencent/mobileqq/aio/msglist/holder/component/text/util/TextContentViewUtil;",
+                                            StringMatchType.Equals
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         val klass: Class<*>

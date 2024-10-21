@@ -23,8 +23,8 @@
 package cc.ioctl.util;
 
 import androidx.annotation.NonNull;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
+import io.github.qauxv.util.xpcompat.XC_MethodHook;
+import io.github.qauxv.util.xpcompat.XposedBridge;
 import io.github.qauxv.base.ITraceableDynamicHook;
 import io.github.qauxv.hook.BaseFunctionHook;
 import io.github.qauxv.hook.BaseHookDispatcher;
@@ -228,17 +228,17 @@ public class HookUtils {
         };
     }
 
-    public static void hookAfterAlways(final @NonNull BaseFunctionHook this0, final @NonNull Method method,
+    public static void hookAfterAlways(final @NonNull ITraceableDynamicHook this0, final @NonNull Method method,
                                        final @NonNull AfterHookedMethod afterHookedMethod) {
         hookAfterAlways(this0, method, 50, afterHookedMethod);
     }
 
-    public static void hookBeforeAlways(final @NonNull BaseFunctionHook this0, final @NonNull Method method,
+    public static void hookBeforeAlways(final @NonNull ITraceableDynamicHook this0, final @NonNull Method method,
                                         final @NonNull BeforeHookedMethod beforeHookedMethod) {
         hookBeforeAlways(this0, method, 50, beforeHookedMethod);
     }
 
-    public static void hookBeforeAndAfterIfEnabled(final @NonNull BaseFunctionHook this0, final @NonNull Method method,
+    public static void hookBeforeAndAfterIfEnabled(final @NonNull ITraceableDynamicHook this0, final @NonNull Method method,
                                                    int priority, final @NonNull BeforeAndAfterHookedMethod hook) {
         Objects.requireNonNull(this0, "this0 == null");
         Objects.requireNonNull(method, "method == null");

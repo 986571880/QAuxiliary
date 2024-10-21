@@ -1,0 +1,82 @@
+name: Pull Request Check
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - 'renovate.json'
+      - '.editorconfig'
+      - '.gitignore'
+      - '.github/**'
+      - '.idea/**'
+      - '!.github/workflows/**'
+
+jobs:
+  build:
+    name: Build CI (Pull Request)
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+      CCACHE_BASEDIR: "${{ github.workspace }}"
+
+    steps:
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+        with:
+          submodules: 'true'
+          fetch-depth: 0
+
+      - name: Config submodules
+        run: |
+          git -C "libs/LSPlant" config "submodule.test/src/main/jni/external/lsprism.update" none
+          git -C "libs/LSPlant" config "submodule.test/src/main/jni/external/lsparself.update" none
+          git -C "libs/LSPlant" config "submodule.docs/doxygen-awesome-css.update" none
+          git -C "libs/mmkv/MMKV" config "submodule.Python/pybind11.update" none
+          git submodule foreach git submodule update --init --recursive
+
+      - name: set up JDK 17
+        uses: actions/setup-java@v4.4.0
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: gradle
+      - name: Install ccache
+        run: |
+          sudo apt install -y ccache ninja-build
+          ccache -o max_size=1G
+          ccache -o hash_dir=false
+          ccache -o hard_link=true
+          ccache -o compiler_check='%compiler% -dumpmachine; %compiler% -dumpversion'
+          ccache -zp
+      - name: Cache Native Build
+        uses: actions/cache@v4.1.1
+        with:
+          path: |
+            ~/.cache/ccache
+            ~/.ccache
+            app/build/.lto-cache
+          key: native-cache-${{ github.sha }}
+          restore-keys: native-cache-
+
+      - name: Setup SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+          mkdir -p "$ANDROID_HOME/licenses/"
+          echo > "$ANDROID_HOME/licenses/android-sdk-license"
+          echo -n 24333f8a63b6825ea9c5514f83c2829b004d1fee > "$ANDROID_HOME/licenses/android-sdk-license"
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3.5.0
+
+      - name: Build with Gradle
+        run: |
+          echo 'org.gradle.parallel=true' >> gradle.properties
+          echo 'org.gradle.vfs.watch=true' >> gradle.properties
+          sed -i 's/org.gradle.configuration-cache=true//g' gradle.properties
+          ./gradlew :app:packageDebug
+          ccache -s

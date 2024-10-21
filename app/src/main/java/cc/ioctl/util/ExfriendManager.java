@@ -34,6 +34,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.Icon;
+import android.text.TextUtils;
 import android.view.View;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
@@ -92,10 +93,46 @@ public class ExfriendManager {
     private boolean dirtySerializedFlag = true;
 
     private static final long[] ROBOT_ENTERPRISE_UIN_ARRAY = new long[]{
-            66600000L, // BabyQ
-            2854196306L, // 小冰
+            // 查询ROBOT信息 https://qun.qq.com/qunpro/robot/qunshare?robot_uin=66600000
+            66600000L, // babyQ
+            2854196925L, // QQ小店助手
+            2854202683L, // 游戏助手
             2854204259L, // 赞噢机器人
-            2854196925L, // 小店助手
+            2854209338L, // 频道管理助手
+            2854211892L, // 饭团团
+            // 热门
+            3889031420L, // 庆余年 | 庆帝
+            3889019833L, // 鹅探长
+            2854208500L, // 修仙之路
+            2854202509L, // 饲养小猫
+            2854197266L, // AL_1S
+            2854214035L, // 心情复杂
+            2854196310L, // Q群管家
+            2854203763L, // 小YOYO
+            // 游戏
+            3889011373L, // 武林侠影
+            3889017942L, // 快说喜欢我
+            2854211478L, // 小念同学
+            2854198976L, // 小德娱乐菌
+            3889009909L, // 钓鱼达人
+            2854196306L, // 小冰
+            3889001741L, // 小小
+            // 娱乐
+            2854197548L, // 开心农场
+            3889000472L, // 麦麦子MaiBot
+            3889001044L, // 益智扫雷
+            2854207033L, // 房东人生
+            2854202692L, // 元梦甜橙喵
+            // 工具
+            2854203783L, // 阿罗娜小助手
+            2854213832L, // 小虾米
+            3889001607L, // 海兰德小助手
+            3889000871L, // 战地1小电视
+            2854196311L, // 王者荣耀小狐狸
+            2854207085L, // DNF手游-赛丽亚
+            2854196316L, // 和平精英-小几
+            2854212997L, // 机器人66
+            2854203945L, // 暗区突围老皮
     };
 
     private ExfriendManager(long uin) {
@@ -145,14 +182,14 @@ public class ExfriendManager {
     }
 
     public static ConcurrentHashMap getFriendsConcurrentHashMap(Object friendsManager)
-        throws IllegalAccessException, NoSuchFieldException {
+            throws IllegalAccessException, NoSuchFieldException {
         for (Field field : Initiator.load("com.tencent.mobileqq.app.FriendsManager").getDeclaredFields()) {
             if (ConcurrentHashMap.class == field.getType()) {
                 field.setAccessible(true);
                 ConcurrentHashMap concurrentHashMap = (ConcurrentHashMap) field.get(friendsManager);
                 if (concurrentHashMap != null && concurrentHashMap.size() > 0) {
                     if (concurrentHashMap.get(concurrentHashMap.keySet().toArray()[0]).getClass()
-                        == Initiator.load("com.tencent.mobileqq.data.Friends")) {
+                            == Initiator.load("com.tencent.mobileqq.data.Friends")) {
                         return concurrentHashMap;
                     }
                 }
@@ -473,7 +510,7 @@ public class ExfriendManager {
         t.addField("_friendStatus", Table.TYPE_INT);
         // 2. fill table
         Iterator<Map.Entry<Integer, EventRecord>> it =/*(Iterator<Map.Entry<Long, FriendRecord>>)*/events
-            .entrySet().iterator();
+                .entrySet().iterator();
         Map.Entry<Integer, EventRecord> ent;
         EventRecord ev;
         int k;
@@ -647,7 +684,7 @@ public class ExfriendManager {
         mConfig.putInt("unread", 0);
         try {
             NotificationManager nm = (NotificationManager) HostInfo.getApplication()
-                .getSystemService(Context.NOTIFICATION_SERVICE);
+                    .getSystemService(Context.NOTIFICATION_SERVICE);
             nm.cancel(ID_EX_NOTIFY);
         } catch (Exception e) {
             Log.e(e);
@@ -703,7 +740,7 @@ public class ExfriendManager {
                 Map.Entry<Long, FriendRecord> ent = it.next();
                 fr = ent.getValue();
                 if (fr.friendStatus == FriendRecord.STATUS_FRIEND_MUTUAL) {
-                    if (ArraysKt.contains(ROBOT_ENTERPRISE_UIN_ARRAY, fr.uin)) {
+                    if (shouldIgnoreDeletionEvent(fr.uin)) {
                         // for enterprise robots we don't report because they are not real friends
                         fr.friendStatus = FriendRecord.STATUS_EXFRIEND;
                         continue;
@@ -787,13 +824,13 @@ public class ExfriendManager {
     }
 
     public Notification createNotiComp(NotificationManager nm, String ticker, String title,
-                                       String content, long[] vibration, PendingIntent pi) {
+            String content, long[] vibration, PendingIntent pi) {
         Application app = HostInfo.getApplication();
         //Do not use NotificationCompat, NotificationCompat does NOT support setSmallIcon with Bitmap.
         Notification.Builder builder;
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel("qn_del_notify", "删好友通知",
-                NotificationManager.IMPORTANCE_DEFAULT);
+                    NotificationManager.IMPORTANCE_DEFAULT);
             channel.setSound(null, null);
             channel.setVibrationPattern(vibration);
             nm.createNotificationChannel(channel);
@@ -821,7 +858,7 @@ public class ExfriendManager {
         }
         try {
             Reflex.invokeVirtualAny(ManagerHelper.getFriendListHandler(), true, true, boolean.class,
-                boolean.class, void.class);
+                    boolean.class, void.class);
         } catch (Exception e) {
             Log.e(e);
         }
@@ -836,5 +873,35 @@ public class ExfriendManager {
         if (t - lastUpdateTimeSec > FL_UPDATE_INT_MIN) {
             tp.execute(this::doRequestFlRefresh);
         }
+    }
+
+    private static final String KEY_DELETION_DETECTION_EXCLUSION_LIST = "exfl_del_exclusion_list";
+
+    public String[] getDeletionDetectionExclusionList() {
+        String uinList = mConfig.getString(KEY_DELETION_DETECTION_EXCLUSION_LIST, "");
+        if (uinList.isEmpty()) {
+            return new String[0];
+        }
+        return uinList.split(",");
+    }
+
+    public void setDeletionDetectionExclusionList(String[] uinList) {
+        if (uinList == null || uinList.length == 0) {
+            mConfig.remove(KEY_DELETION_DETECTION_EXCLUSION_LIST);
+        } else {
+            mConfig.putString(KEY_DELETION_DETECTION_EXCLUSION_LIST, TextUtils.join(",", uinList));
+        }
+        // no need to call saveConfigure() because it's MMKV
+    }
+
+    private boolean shouldIgnoreDeletionEvent(long uin) {
+        if (ArraysKt.contains(ROBOT_ENTERPRISE_UIN_ARRAY, uin)) {
+            return true;
+        }
+        String[] exclusionList = getDeletionDetectionExclusionList();
+        if (exclusionList == null || exclusionList.length == 0) {
+            return false;
+        }
+        return ArraysKt.contains(exclusionList, String.valueOf(uin));
     }
 }

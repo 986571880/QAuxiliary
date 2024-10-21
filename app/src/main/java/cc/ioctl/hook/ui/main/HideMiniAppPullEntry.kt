@@ -25,8 +25,8 @@ import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.hookAllConstructorAfter
 import com.github.kyuubiran.ezxhelper.utils.paramCount
-import de.robv.android.xposed.XC_MethodReplacement
-import de.robv.android.xposed.XposedHelpers
+import io.github.qauxv.util.xpcompat.XC_MethodReplacement
+import io.github.qauxv.util.xpcompat.XposedHelpers
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.config.ConfigItems
@@ -36,24 +36,20 @@ import io.github.qauxv.hook.CommonSwitchFunctionHook
 import io.github.qauxv.step.Step
 import io.github.qauxv.util.Initiator
 import io.github.qauxv.util.Log
+import io.github.qauxv.util.QQVersion
 import io.github.qauxv.util.dexkit.DexDeobfsProvider.getCurrentBackend
 import io.github.qauxv.util.dexkit.DexKitFinder
 import io.github.qauxv.util.dexkit.impl.DexKitDeobfs
-import io.luckypray.dexkit.builder.BatchFindArgs.Companion.builder
-import io.luckypray.dexkit.descriptor.member.DexMethodDescriptor
-import io.luckypray.dexkit.enums.MatchType
-import io.luckypray.dexkit.util.DexDescriptorUtil.getTypeSig
+import io.github.qauxv.util.requireMinQQVersion
+import org.luckypray.dexkit.result.MethodData
 import kotlin.collections.HashMap
 import kotlin.collections.HashSet
 import kotlin.collections.MutableMap
 import kotlin.collections.MutableSet
 import kotlin.collections.Set
-import kotlin.collections.component1
-import kotlin.collections.component2
 import kotlin.collections.filter
 import kotlin.collections.first
 import kotlin.collections.indices
-import kotlin.collections.iterator
 import kotlin.collections.set
 
 @FunctionHookEntry
@@ -88,15 +84,33 @@ object HideMiniAppPullEntry : CommonSwitchFunctionHook(ConfigItems.qn_hide_msg_l
 //        }
 
 
-        val zMiniOldStyleHeader = Initiator.load("com.tencent.qqnt.chats.view.MiniOldStyleHeader")
-        zMiniOldStyleHeader?.hookAllConstructorAfter {
-            // Lcom/scwang/smart/refresh/header/TwoLevelHeader;
-            it.thisObject.javaClass.superclass.superclass.superclass.declaredFields.first {
-                it.name == "D"  //mEnableTwoLevel
-            }.apply { isAccessible = true }.set(it.thisObject, false)
-        }
-        zMiniOldStyleHeader?.findMethod { name == "a" && paramCount == 3 }?.hookAfter {
-            XposedHelpers.callMethod(it.args[0], "finishRefresh")
+        Initiator.load("com.tencent.qqnt.chats.view.MiniOldStyleHeaderNew")?.let {
+            it.hookAllConstructorAfter {
+                // Lcom/scwang/smart/refresh/header/TwoLevelHeader;
+                // com.qqnt.widget.smartrefreshlayout.header.TwoLevelHeader
+                it.thisObject.javaClass.superclass.superclass.superclass.declaredFields.first {
+                    it.name == "D"  //mEnableTwoLevel
+                }.apply { isAccessible = true }.set(it.thisObject, false)
+            }
+//            val name0 = when {
+//                requireMinQQVersion(QQVersion.QQ_9_0_50) -> "c"
+//                else -> "a"
+//            }
+            it.findMethod { name == miniOldStyleHeaderNewMethod && paramCount == 3 }.hookAfter {
+                XposedHelpers.callMethod(it.args[0], "finishRefresh")
+            }
+        } ?: run {
+            Initiator.load("com.tencent.qqnt.chats.view.MiniOldStyleHeader")?.let {
+                it.hookAllConstructorAfter {
+                    // Lcom/scwang/smart/refresh/header/TwoLevelHeader;
+                    it.thisObject.javaClass.superclass.superclass.superclass.declaredFields.first {
+                        it.name == "D"  //mEnableTwoLevel
+                    }.apply { isAccessible = true }.set(it.thisObject, false)
+                }
+                it.findMethod { name == "a" && paramCount == 3 }?.hookAfter {
+                    XposedHelpers.callMethod(it.args[0], "finishRefresh")
+                }
+            }
         }
 
 
@@ -141,6 +155,11 @@ object HideMiniAppPullEntry : CommonSwitchFunctionHook(ConfigItems.qn_hide_msg_l
             } else null
         }
 
+    private val miniOldStyleHeaderNewMethod: String?
+        get() {
+            return ConfigManager.getCache().getString("qn_hide_miniapp_v2_mini_old_style_header_method_name")
+        }
+
     private val mStep: Step = object : Step {
 
         override fun step(): Boolean {
@@ -160,23 +179,32 @@ object HideMiniAppPullEntry : CommonSwitchFunctionHook(ConfigItems.qn_hide_msg_l
     override fun makePreparationSteps() = arrayOf(mStep)
 
     override val isNeedFind: Boolean
-        get() = initMiniAppObfsName == null
+        get() = initMiniAppObfsName == null || (Initiator.load("com.tencent.qqnt.chats.view.MiniOldStyleHeaderNew") != null && miniOldStyleHeaderNewMethod == null)
 
     override fun doFind(): Boolean {
-        val clz = Initiator._Conversation() ?: return false
-        val conversationSig = getTypeSig(clz)
         (getCurrentBackend() as DexKitDeobfs).use { dexKitDeobfs ->
+
+            dexKitDeobfs.getDexKitBridge().findMethod {
+                matcher {
+                    usingStrings("refreshLayout", "oldState", "newState")
+                    declaredClass("com.tencent.qqnt.chats.view.MiniOldStyleHeaderNew")
+                    paramCount = 3
+                }
+            }.firstOrNull()?.let { ConfigManager.getCache().putString("qn_hide_miniapp_v2_mini_old_style_header_method_name", it.name) }
+
+            val clz = Initiator._Conversation() ?: return false
+            val conversationClassName = clz.name
             val strings = arrayOf(
                 "initMiniAppEntryLayout.",
                 "initMicroAppEntryLayout.",
                 "init Mini App, cost="
             )
-            val fnVerifyAndSaveResult: (DexMethodDescriptor) -> Boolean = { methodDesc ->
-                if (methodDesc.declaringClassSig == conversationSig && "()V" == methodDesc.signature) {
+            val fnVerifyAndSaveResult: (MethodData) -> Boolean = { methodData ->
+                if (methodData.className == conversationClassName && "()V" == methodData.methodSign) {
                     // save and return
                     val cache = ConfigManager.getCache()
                     cache.putInt("qn_hide_miniapp_v2_version_code", HostInfo.getVersionCode())
-                    cache.putString("qn_hide_miniapp_v2_method_name", methodDesc.name)
+                    cache.putString("qn_hide_miniapp_v2_method_name", methodData.name)
                     cache.save()
                     true
                 } else {
@@ -191,31 +219,32 @@ object HideMiniAppPullEntry : CommonSwitchFunctionHook(ConfigItems.qn_hide_msg_l
                 map["Conversation_$i"] = set
             }
             val res = dexKitDeobfs.getDexKitBridge()
-                .batchFindMethodsUsingStrings(
-                    builder()
-                        .queryMap(map)
-                        .matchType(MatchType.CONTAINS)
-                        .build()
-                )
+                .batchFindMethodUsingStrings {
+                    groups(map)
+                }
             for (methods in res.values) {
-                for (methodDesc in methods) {
-                    if (fnVerifyAndSaveResult(methodDesc)) {
+                for (methodData in methods) {
+                    if (fnVerifyAndSaveResult(methodData)) {
                         return true
                     }
                 }
             }
             // for NT QQ 8.9.58.11040 (4054)+
-            val candidates = dexKitDeobfs.getDexKitBridge().findMethodCaller {
-                methodDeclareClass = "com.tencent.mobileqq.mini.api.IMiniAppService"
-                methodName = "createMiniAppEntryManager"
-            }.filter { (caller, _) ->
+            val candidates = dexKitDeobfs.getDexKitBridge().findMethod {
+                matcher {
+                    addInvoke {
+                        declaredClass = "com.tencent.mobileqq.mini.api.IMiniAppService"
+                        name = "createMiniAppEntryManager"
+                    }
+                }
+            }.filter { caller ->
                 Log.d("HideMiniAppPullEntry: caller = $caller")
-                caller.declaringClassSig == conversationSig
+                caller.className == conversationClassName
             }
             if (candidates.size != 1) {
                 Log.e("HideMiniAppPullEntry: candidates.size expected 1 but got ${candidates.size}")
             }
-            for ((caller, _) in candidates) {
+            for (caller in candidates) {
                 if (fnVerifyAndSaveResult(caller)) {
                     return true
                 }

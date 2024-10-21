@@ -58,10 +58,16 @@ import io.github.qauxv.util.QQVersion.QQ_8_9_2
 import io.github.qauxv.util.QQVersion.QQ_8_9_25
 import io.github.qauxv.util.QQVersion.QQ_8_9_28
 import io.github.qauxv.util.QQVersion.QQ_8_9_3
-import io.github.qauxv.util.QQVersion.QQ_8_9_63
+import io.github.qauxv.util.QQVersion.QQ_8_9_63_BETA_11345
 import io.github.qauxv.util.QQVersion.QQ_8_9_68
 import io.github.qauxv.util.QQVersion.QQ_8_9_70
 import io.github.qauxv.util.QQVersion.QQ_8_9_8
+import io.github.qauxv.util.QQVersion.QQ_8_9_90
+import io.github.qauxv.util.QQVersion.QQ_9_0_0
+import io.github.qauxv.util.QQVersion.QQ_9_0_20
+import io.github.qauxv.util.QQVersion.QQ_9_0_35
+import io.github.qauxv.util.QQVersion.QQ_9_0_85
+import io.github.qauxv.util.QQVersion.QQ_9_0_90
 import me.ketal.hook.SortAtPanel
 import xyz.nextalone.hook.ChatWordsCount
 
@@ -99,7 +105,7 @@ class QQConfigTable : ConfigTableInterface {
             QQ_8_8_80 to "nmx",
             QQ_8_8_83 to "nnl",
             // NT begin
-            QQ_8_9_63 to "nxj",
+            QQ_8_9_63_BETA_11345 to "nxj",
             QQ_8_9_68 to "nyb",
             QQ_8_9_70 to "nyn"
         ),
@@ -121,6 +127,12 @@ class QQConfigTable : ConfigTableInterface {
             QQ_8_9_25 to "l0",
             QQ_8_9_28 to "m0",
             QQ_8_9_68 to "l0",
+            QQ_8_9_90 to "i0",
+            QQ_9_0_0 to "f0",
+            QQ_9_0_20 to "e0",
+            QQ_9_0_35 to "g0",
+            QQ_9_0_85 to "h0",
+            QQ_9_0_90 to "f0",
         ),
 
         SortAtPanel.sessionInfoTroopUin to mapOf(

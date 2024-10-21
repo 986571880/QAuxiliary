@@ -26,10 +26,13 @@ import android.app.AlertDialog
 import android.content.Context
 import android.view.View
 import android.widget.TextView
+import cc.hicore.QApp.QAppUtils
 import cc.ioctl.util.Reflex
 import cc.ioctl.util.afterHookIfEnabled
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import com.xiaoniu.dispatcher.OnMenuBuilder
+import io.github.qauxv.util.xpcompat.XC_MethodHook
+import io.github.qauxv.util.xpcompat.XposedBridge
+import io.github.qauxv.util.xpcompat.XposedHelpers
 import io.github.qauxv.R
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
@@ -44,7 +47,7 @@ import xyz.nextalone.util.invoke
 
 @FunctionHookEntry
 @UiItemAgentEntry
-object TranslateTextMsg : CommonSwitchFunctionHook() {
+object TranslateTextMsg : CommonSwitchFunctionHook(), OnMenuBuilder {
     override val name: String = "翻译文本消息"
 
     override val description: String = "在聊天窗口中，长按一个文本消息出现翻译按钮，点击翻译"
@@ -54,6 +57,8 @@ object TranslateTextMsg : CommonSwitchFunctionHook() {
     private var isHook: Boolean = false
 
     override fun initOnce(): Boolean {
+        if (QAppUtils.isQQnt()) return true
+
         val _TextItemBuilder = Initiator._TextItemBuilder()
         XposedHelpers.findAndHookMethod(
             _TextItemBuilder, "a", Int::class.javaPrimitiveType, Context::class.java,
@@ -134,5 +139,16 @@ object TranslateTextMsg : CommonSwitchFunctionHook() {
             }
         }
         return false
+    }
+
+    override val targetComponentTypes: Array<String>
+        get() = arrayOf("com.tencent.mobileqq.aio.msglist.holder.component.text.AIOTextContentComponent")
+
+    override fun onGetMenuNt(msg: Any, componentType: String, param: XC_MethodHook.MethodHookParam) {
+        if (!isEnabled) return
+        val item = CustomMenu.createItemIconNt(msg, "翻译文本", R.drawable.ic_item_translate_72dp, R.id.item_translate) {
+            //TODO: 待开发
+        }
+        param.result = (param.result as List<*>) + item
     }
 }

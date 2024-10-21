@@ -31,7 +31,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.browser.customtabs.CustomTabsIntent.COLOR_SCHEME_DARK
 import androidx.browser.customtabs.CustomTabsIntent.COLOR_SCHEME_LIGHT
 import cc.ioctl.hook.misc.JumpController
-import de.robv.android.xposed.XC_MethodHook
+import io.github.qauxv.util.xpcompat.XC_MethodHook
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.dsl.FunctionEntryRouter
 import io.github.qauxv.router.decorator.BaseSwitchFunctionDecorator
@@ -102,7 +102,7 @@ object FxxkQQBrowser : BaseSwitchFunctionDecorator(), IStartActivityHookDecorato
             url.substring(url.indexOf("://") + 3)
         } else {
             url
-        }
+        }.dropWhile { it == '/' } // https:///ti.qq.com 前面有多个/不影响跳转，给腾讯擦屁股
         val host = if (body.contains("/")) {
             body.substring(0, body.indexOf("/"))
         } else {

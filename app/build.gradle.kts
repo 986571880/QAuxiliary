@@ -21,28 +21,38 @@
  */
 
 import android.databinding.tool.ext.capitalizeUS
+import com.android.build.gradle.internal.dsl.SigningConfig
 import com.android.build.gradle.internal.tasks.factory.dependsOn
 import com.android.tools.build.apkzlib.sign.SigningExtension
 import com.android.tools.build.apkzlib.sign.SigningOptions
 import com.android.tools.build.apkzlib.zfile.ZFiles
-import com.android.tools.build.apkzlib.zip.AlignmentRules
+import com.android.tools.build.apkzlib.zip.AlignmentRule
 import com.android.tools.build.apkzlib.zip.CompressionMethod
 import com.android.tools.build.apkzlib.zip.ZFile
 import com.android.tools.build.apkzlib.zip.ZFileOptions
 import org.jetbrains.changelog.markdownToHTML
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.FileInputStream
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.cert.X509Certificate
+import java.util.Locale
 import java.util.UUID
 
-@Suppress("DSL_SCOPE_VIOLATION")
 plugins {
     id("build-logic.android.application")
     alias(libs.plugins.changelog)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.protobuf)
     alias(libs.plugins.serialization)
     alias(libs.plugins.aboutlibraries)
 }
+
+// ------ buildscript config ------
+
+val buildAllAbiForDebug = false
+val isNewXposedApiEnabled = true
+val isNativeFullDebugMode = false
 
 val currentBuildUuid = UUID.randomUUID().toString()
 println("Current build ID is $currentBuildUuid")
@@ -55,9 +65,38 @@ if (ccacheExecutablePath != null) {
     println("No ccache found.")
 }
 
+fun getSignatureKeyDigest(signConfig: SigningConfig?): String? {
+    val key1: String? = if (signConfig?.storeFile != null) {
+        // extract certificate digest
+        val key = signConfig.storeFile
+        val keyStore = KeyStore.getInstance(signConfig.storeType ?: KeyStore.getDefaultType())
+        FileInputStream(key!!).use {
+            keyStore.load(it, signConfig.storePassword!!.toCharArray())
+        }
+        val cert = keyStore.getCertificate(signConfig.keyAlias!!)
+        val md = MessageDigest.getInstance("MD5")
+        val digest = md.digest(cert.encoded)
+        digest.joinToString("") { "%02X".format(it) }
+    } else null
+    val key2: String? = Version.getLocalProperty(project, "qauxv.signature.md5digest")
+        ?.uppercase(Locale.ROOT)?.ifEmpty { null }
+    // check if key1 and key2 are the same
+    if (key1 != null && key2 != null && key1 != key2) {
+        error(
+            "The signature key digest in the signing config and local.properties are different, " +
+                "got $key1 and $key2, please make sure they are the same."
+        )
+    }
+    return (key1 ?: key2)?.also {
+        check(it.matches(Regex("[0-9A-F]{32}"))) {
+            "Invalid signature key digest: $it"
+        }
+    }
+}
+
 android {
     namespace = "io.github.qauxv"
-    ndkVersion = Version.getNdkVersion(project)
+    ndkVersion = Version.getNdkVersion(rootProject)
     defaultConfig {
         applicationId = "io.github.qauxv"
         buildConfigField("String", "BUILD_UUID", "\"$currentBuildUuid\"")
@@ -73,6 +112,7 @@ android {
                         "-DANDROID_CCACHE=$it",
                     )
                 }
+                arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                 val flags = arrayOf(
                     "-Qunused-arguments",
                     "-fno-rtti",
@@ -84,11 +124,15 @@ android {
                     "-Wno-unused-command-line-argument",
                     "-DMMKV_DISABLE_CRYPT",
                 )
-                cppFlags("-std=c++20", *flags)
+                // do not add -std=c++20 here, it should be added in the CMakeLists.txt where each module is defined
+                // some modules uses features that are REMOVED or deprecated in C++20
+                cppFlags(*flags)
                 cFlags("-std=c18", *flags)
-                targets += "qauxv"
+                targets += "qauxv-core0"
             }
         }
+
+        ndk.debugSymbolLevel = "FULL"
     }
     externalNativeBuild {
         cmake {
@@ -97,6 +141,12 @@ android {
         }
     }
     buildTypes {
+        val signatureDigest: String? = getSignatureKeyDigest(signingConfigs.findByName("release"))
+        if (signatureDigest != null) {
+            println("Signature Digest: $signatureDigest")
+        } else {
+            println("No Signature Digest Configured")
+        }
         getByName("release") {
             isShrinkResources = true
             isMinifyEnabled = true
@@ -107,14 +157,17 @@ android {
                 "-Wl,--thinlto-cache-policy,cache_size_bytes=300m",
                 "-Wl,--thinlto-cache-dir=${buildDir.absolutePath}/.lto-cache",
             )
-            val releaseFlags = arrayOf(
+            var releaseFlags = arrayOf(
                 "-ffunction-sections",
                 "-fdata-sections",
                 "-Wl,--gc-sections",
-                "-Oz",
+                "-O3",
                 "-Wl,--exclude-libs,ALL",
                 "-DNDEBUG",
             )
+            if (signatureDigest != null) {
+                releaseFlags += "-DMODULE_SIGNATURE=$signatureDigest"
+            }
             externalNativeBuild.cmake {
                 arguments += "-DQAUXV_VERSION=${defaultConfig.versionName}"
                 cFlags += releaseFlags
@@ -124,16 +177,40 @@ android {
             }
         }
         getByName("debug") {
-            @Suppress("ChromeOsAbiSupport")
-            ndk.abiFilters += arrayOf("arm64-v8a", "armeabi-v7a")
+            ndk {
+                if (isNativeFullDebugMode) {
+                    isJniDebuggable = true
+                } else {
+                    if (!buildAllAbiForDebug) {
+                        @Suppress("ChromeOsAbiSupport")
+                        abiFilters += arrayOf("arm64-v8a", "armeabi-v7a")
+                    }
+                }
+            }
             isCrunchPngs = false
             proguardFiles("proguard-rules.pro")
-            val debugFlags = arrayOf<String>(
-//                "-DMODULE_SIGNATURE=E7A8AEB0A1431D12EB04BF1B7FC31960",
+            var debugFlags = arrayOf<String>(
 //                "-DTEST_SIGNATURE",
             )
+            if (signatureDigest != null) {
+                debugFlags += "-DMODULE_SIGNATURE=$signatureDigest"
+            }
             externalNativeBuild.cmake {
-                arguments += "-DQAUXV_VERSION=${Version.versionName}.debug"
+                arguments.addAll(
+                    arrayOf(
+                        "-DQAUXV_VERSION=${Version.versionName}.debug",
+                    )
+                )
+                arguments.addAll(
+                    if (isNativeFullDebugMode) arrayOf(
+                        "-DCMAKE_CXX_FLAGS_DEBUG=-O0",
+                        "-DCMAKE_C_FLAGS_DEBUG=-O0",
+                    )
+                    else arrayOf(
+                        "-DCMAKE_CXX_FLAGS_DEBUG=-Og",
+                        "-DCMAKE_C_FLAGS_DEBUG=-Og",
+                    )
+                )
                 cFlags += debugFlags
                 cppFlags += debugFlags
             }
@@ -146,12 +223,17 @@ android {
         )
     }
     packaging {
-        resources.excludes.addAll(arrayOf(
-            "META-INF/**",
-            "kotlin/**",
-            "**.bin",
-            "kotlin-tooling-metadata.json"
-        ))
+        // libxposed API uses META-INF/xposed
+        resources.excludes.addAll(
+            arrayOf(
+                "kotlin/**",
+                "**.bin",
+                "kotlin-tooling-metadata.json"
+            )
+        )
+        if (!isNewXposedApiEnabled) {
+            resources.excludes.add("META-INF/xposed/**")
+        }
     }
 
     buildFeatures {
@@ -174,21 +256,40 @@ android {
         tasks.findByName("lintVitalAnalyze${variantCapped}")?.dependsOn(mergeAssetsProvider)
         mergeAssetsProvider.dependsOn(generateEulaAndPrivacy)
     }
+
+    if (isNativeFullDebugMode) {
+        packagingOptions.jniLibs {
+            // be aware that some SIGSEGVs and SIGBUSes are only reproducible with "useLegacyPackaging = false"
+            useLegacyPackaging = true
+            keepDebugSymbols += "**/*.so"
+        }
+    }
+    // not use embedded dex
+    packagingOptions.dex.useLegacyPackaging = true
 }
 
 kotlin {
     sourceSets.configureEach {
         kotlin.srcDir("$buildDir/generated/ksp/$name/kotlin/")
     }
+    sourceSets.main {
+        kotlin.srcDir(File(rootDir, "libs/ezxhelper/src/main/java"))
+    }
 }
 
 dependencies {
+    // loader
+    compileOnly(projects.loader.hookapi)
+    runtimeOnly(projects.loader.sbl)
+    implementation(projects.loader.startup)
+    // ksp
+    ksp(projects.libs.ksp)
+    // host stub
     compileOnly(projects.libs.stub)
+    // libraries
     implementation(projects.libs.mmkv)
     implementation(projects.libs.dexkit)
     implementation(projects.libs.xView)
-    ksp(projects.libs.ksp)
-    compileOnly(libs.xposed)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.browser)
@@ -202,7 +303,6 @@ dependencies {
     implementation(libs.colorpicker)
     implementation(libs.material.dialogs.core)
     implementation(libs.material.dialogs.input)
-    implementation(libs.ezXHelper)
     // festival title
     implementation(libs.confetti)
     implementation(libs.weatherView)
@@ -212,6 +312,12 @@ dependencies {
     implementation(libs.byte.buddy)
     implementation(libs.dalvik.dx)
     ksp(libs.sealedEnum.ksp)
+    implementation(libs.google.protobuf.java)
+    implementation(libs.dexlib2)
+    // I don't know why, but without this, compilation will fail
+    implementation(libs.google.guava)
+    // for get activation status
+    implementation(projects.libs.libxposed.service)
 }
 
 val adb: String = androidComponents.sdkComponents.adb.get().asFile.absolutePath
@@ -322,7 +428,23 @@ val synthesizeDistReleaseApksCI by tasks.registering {
         val requiredAbiList = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         outputDir.mkdir()
         val options = ZFileOptions().apply {
-            alignmentRule = AlignmentRules.constantForSuffix(".so", 4096)
+            alignmentRule = object : AlignmentRule {
+                override fun alignment(path: String): Int {
+                    if (path.endsWith(".so")) {
+                        if (path.contains("arm64-v8a") || path.contains("x86_64") || path.contains("riscv64")) {
+                            // for 64-bit so files, we use 16k alignment in case of 16k page size
+                            return 16384
+                        } else {
+                            // for 32-bit so files, we use 4k alignment
+                            // will there be any 16k-page-size devices supporting 32-bit abi?
+                            return 4096
+                        }
+                    } else {
+                        // no alignment for other files
+                        return AlignmentRule.NO_ALIGNMENT
+                    }
+                }
+            }
             noTimestamps = true
             autoSortFiles = true
         }
@@ -335,7 +457,7 @@ val synthesizeDistReleaseApksCI by tasks.registering {
         ZFile.openReadOnly(inputApk).use { srcApk ->
             // check whether all required abis are in the apk
             requiredAbiList.forEach { abi ->
-                val path = "lib/$abi/libqauxv.so"
+                val path = "lib/$abi/libqauxv-core0.so"
                 require(srcApk.get(path) != null) { "input apk should contain $path, but not found" }
             }
             outputAbiVariants.forEach { (variant, abis) ->
@@ -402,5 +524,43 @@ val generateEulaAndPrivacy by tasks.registering {
             }.lines().joinToString("")
             it.writeText(output)
         }
+    }
+}
+
+// see https://github.com/google/protobuf-gradle-plugin/issues/518
+protobuf {
+    protoc {
+        artifact = libs.google.protobuf.protoc.get().toString()
+    }
+    plugins {
+        generateProtoTasks {
+            all().forEach {
+                it.builtins {
+                    create("java") {
+                        option("lite")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// force kotlin to produce java 11 class files
+tasks.withType<KotlinCompile> {
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+}
+
+// force javac to produce java 11 class files
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+// javac should be able to read java 17 class files, although we force it to produce java 11 class files for this module
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
     }
 }

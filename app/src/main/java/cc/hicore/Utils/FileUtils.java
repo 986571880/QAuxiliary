@@ -31,7 +31,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 public class FileUtils {
-    public static void WriteToFile(String File, String FileContent) {
+    public static void writeToFile(String File, String FileContent) {
         try {
             File parent = new File(File).getParentFile();
             if (!parent.exists()) parent.mkdirs();
@@ -45,19 +45,17 @@ public class FileUtils {
         if (file == null) {
             return;
         }
-        File[] files = file.listFiles();
-        if (files == null) return;
-        //遍历该目录下的文件对象
-        for (File f : files) {
-            if (f.isDirectory()) {
-                deleteFile(f);
-            } else {
-                f.delete();
+        if (file.isDirectory()){
+            File[] files = file.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    deleteFile(f);
+                }
             }
         }
         file.delete();
     }
-    public static String ReadFileString(File f) {
+    public static String readFileString(File f) {
         try {
             FileInputStream fInp = new FileInputStream(f);
             String Content = new String(readAllBytes(fInp), StandardCharsets.UTF_8);
@@ -67,8 +65,8 @@ public class FileUtils {
             return null;
         }
     }
-    public static String ReadFileString(String f) {
-        return ReadFileString(new File(f));
+    public static String readFileString(String f) {
+        return readFileString(new File(f));
     }
     public static void copy(String source, String dest) {
 

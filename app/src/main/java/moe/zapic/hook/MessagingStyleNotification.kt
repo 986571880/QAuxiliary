@@ -27,6 +27,7 @@ import android.app.NotificationChannelGroup
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
@@ -44,15 +45,13 @@ import cc.ioctl.util.HostInfo
 import cc.ioctl.util.Reflex
 import cc.ioctl.util.hookAfterIfEnabled
 import cc.ioctl.util.hookBeforeIfEnabled
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import com.github.kyuubiran.ezxhelper.utils.paramCount
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.dsl.FunctionEntryRouter
 import io.github.qauxv.hook.CommonSwitchFunctionHook
 import io.github.qauxv.ui.ResUtils
-import io.github.qauxv.util.LicenseStatus
+import io.github.qauxv.util.Log
 import io.github.qauxv.util.QQVersion
 import io.github.qauxv.util.SyncUtils
 import io.github.qauxv.util.hostInfo
@@ -84,7 +83,7 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
             createNotificationChannels()
         }
 
-        if (!HostInfo.requireMinQQVersion(QQVersion.QQ_8_9_63)) {
+        if (!HostInfo.requireMinQQVersion(QQVersion.QQ_8_9_63_BETA_11345)) {
             return NonNTMessageStyleNotification(this).hook()
         }
         val cNotificationFacade = "com.tencent.qqnt.notification.NotificationFacade".clazz!!
@@ -98,14 +97,17 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
             Notification::class.java,
             Int::class.javaPrimitiveType
         )
+
         lateinit var buildNotification: Method
         lateinit var recentInfoBuilder: Method
         cNotificationFacade.declaredMethods.forEach {
-            if (it.parameterTypes.size != 3) return@forEach
-            if (it.parameterTypes[0] != cAppRuntime) return@forEach
-            if (it.parameterTypes[2] == cCommonInfo) {
+            if (it.paramCount < 3 || it.parameterTypes[0] != cAppRuntime) return@forEach
+            if (it.paramCount == 3 && it.parameterTypes[2] == cCommonInfo ||
+                it.paramCount == 4 && it.parameterTypes[2] == cCommonInfo && it.parameterTypes[3] == cRecentInfo // since 9.1.0
+            ) {
                 buildNotification = it
-            } else if (it.parameterTypes[1] == cRecentInfo) {
+            } else if (it.paramCount >= 3 && it.parameterTypes[1] == cRecentInfo && it.parameterTypes[2] == Boolean::class.java) {
+                // paramCount=4 since 9.0.75
                 recentInfoBuilder = it
             }
         }
@@ -132,7 +134,8 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
             val info = QQRecentContactInfo(pair.first)
             notificationInfoMap.remove(oldNotification.contentIntent)
             if (info.chatType == 1 || info.chatType == 2) {
-                val content = info.abstractContent?.joinToString(separator = "") { it.get("content", String::class.java) ?: "[未解析消息]" } ?: return@hookBeforeIfEnabled
+                val content =
+                    info.abstractContent?.joinToString(separator = "") { it.get("content", String::class.java) ?: "[未解析消息]" } ?: return@hookBeforeIfEnabled
                 val senderName = info.getUserName() ?: return@hookBeforeIfEnabled
                 val senderUin = info.senderUin ?: return@hookBeforeIfEnabled
                 val senderIcon: IconCompat
@@ -140,21 +143,30 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
                 var groupName: String? = null
                 var groupUin: Long? = null
                 var groupIcon: IconCompat? = null
+                val isSpecial = info.specialCareFlag == 1.toByte() || info.listOfSpecificEventTypeInfosInMsgBox.toString().contains("eventTypeInMsgBox=1006")
+                // 特别关心判定改自9.0.17版本方法：
+                // Lcom/tencent/mobileqq/app/notification/processor/basemessage/NTC2CFriendNotificationProcessor;->s(Lcom/tencent/qqnt/kernel/nativeinterface/RecentContactInfo;)Z
 
                 // 好友消息
                 when (info.chatType) {
                     1 -> {
-                        senderIcon = IconCompat.createFromIcon(hostInfo.application, oldNotification.getLargeIcon()) ?: IconCompat.createWithBitmap(ResUtils.loadDrawableFromAsset("face.png", context).toBitmap())
+                        senderIcon = IconCompat.createFromIcon(hostInfo.application, oldNotification.getLargeIcon())
+                            ?: IconCompat.createWithBitmap(ResUtils.loadDrawableFromAsset("face.png", context).toBitmap())
                         shortcut = getShortcut("private_$senderUin", senderName, senderIcon, pair.second)
                     }
+
                     2 -> {
                         groupName = info.peerName ?: return@hookBeforeIfEnabled
                         groupUin = info.peerUin ?: return@hookBeforeIfEnabled
 
-                        senderIcon = avatarHelper.getAvatar(senderUin.toString()) ?: IconCompat.createWithBitmap(ResUtils.loadDrawableFromAsset("face.png", context).toBitmap())
-                        groupIcon = IconCompat.createFromIcon(hostInfo.application, oldNotification.getLargeIcon()) ?: IconCompat.createWithBitmap(ResUtils.loadDrawableFromAsset("face.png", context).toBitmap())
+                        senderIcon = avatarHelper.getAvatar(senderUin.toString()) ?: IconCompat.createWithBitmap(
+                            ResUtils.loadDrawableFromAsset("face.png", context).toBitmap()
+                        )
+                        groupIcon = IconCompat.createFromIcon(hostInfo.application, oldNotification.getLargeIcon())
+                            ?: IconCompat.createWithBitmap(ResUtils.loadDrawableFromAsset("face.png", context).toBitmap())
                         shortcut = getShortcut("group_$groupUin", groupName, groupIcon, pair.second)
                     }
+
                     else -> {
                         // Impossible
                         throw Error("what the hell?")
@@ -169,22 +181,20 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
                     groupUin,
                     groupIcon,
                     shortcut,
-                    oldNotification
+                    oldNotification,
+                    isSpecial
                 )
                 param.args[0] = notification
             }
         }
-
-        XposedHelpers.findAndHookMethod(
-            "com.tencent.commonsdk.util.notification.QQNotificationManager".clazz,
-            "cancelAll",
-            object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    if (!isEnabled || LicenseStatus.sDisableCommonHooks) return
-                    historyMessage.clear()
-                }
-            }
-        )
+        hookBeforeIfEnabled(
+            Reflex.findMethod(
+                "com.tencent.commonsdk.util.notification.QQNotificationManager".clazz!!,
+                "cancelAll"
+            )
+        ) {
+            historyMessage.clear()
+        }
         return true
     }
 
@@ -215,7 +225,8 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
         groupUin: Long?,
         groupIcon: IconCompat?,
         shortcut: ShortcutInfoCompat,
-        oldNotification: Notification
+        oldNotification: Notification,
+        isSpecial: Boolean
     ): Notification {
         val mainUin: Long
         val mainName: String?
@@ -231,19 +242,22 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
             mainUin = senderUin
             mainName = senderName
             mainIcon = senderIcon
-            channelId = NotifyChannel.FRIEND
+            channelId = if (isSpecial) NotifyChannel.FRIEND_SPECIAL else NotifyChannel.FRIEND
         }
 
-        var messageStyle = historyMessage["$mainUin"]
+        var messageStyle = historyMessage["$channelId+$mainUin"]
 
         if (messageStyle == null) {
-            messageStyle = MessagingStyle(Person.Builder()
-                .setName(mainName)
-                .setIcon(mainIcon)
-                .setKey(mainUin.toString())
-                .build())
+            messageStyle = MessagingStyle(
+                Person.Builder()
+                    .setName(mainName)
+                    .setIcon(mainIcon)
+                    .setKey(mainUin.toString())
+                    .build()
+            )
             messageStyle.conversationTitle = mainName
-            historyMessage["$mainUin"] = messageStyle
+            messageStyle.isGroupConversation = groupUin != null
+            historyMessage["$channelId+$mainUin"] = messageStyle
         }
         var senderPerson: Person? = null
         if (groupUin != null) {
@@ -258,7 +272,7 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
         val builder = NotificationCompat.Builder(hostInfo.application, oldNotification)
             .setContentTitle(mainName)
             .setContentText(content)
-            .setLargeIcon(null)
+            .setLargeIcon(null as Bitmap?)
             .setStyle(messageStyle)
             .setChannelId(getChannelId(channelId))
 
@@ -275,7 +289,7 @@ object MessagingStyleNotification : CommonSwitchFunctionHook(SyncUtils.PROC_ANY)
         if (notificationChannels.any { notificationChannel ->
                 notificationManager.getNotificationChannel(notificationChannel.id) == null
             }) {
-            XposedBridge.log("QNotifyEvolutionXp: Creating channels...")
+            Log.i("QNotifyEvolutionXp: Creating channels...")
             notificationManager.createNotificationChannelGroup(notificationChannelGroup)
             notificationManager.createNotificationChannels(notificationChannels)
         }

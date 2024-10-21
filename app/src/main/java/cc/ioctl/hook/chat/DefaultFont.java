@@ -29,6 +29,8 @@ import androidx.annotation.Nullable;
 import cc.hicore.QApp.QAppUtils;
 import cc.ioctl.util.HookUtils;
 import com.tencent.qqnt.kernel.nativeinterface.VASMsgFont;
+import io.github.qauxv.util.xpcompat.XC_MethodHook;
+import io.github.qauxv.util.xpcompat.XposedBridge;
 import io.github.qauxv.base.annotation.FunctionHookEntry;
 import io.github.qauxv.base.annotation.UiItemAgentEntry;
 import io.github.qauxv.dsl.FunctionEntryRouter.Locations.Simplify;
@@ -43,18 +45,20 @@ import io.github.qauxv.util.dexkit.DexKitFinder;
 import io.github.qauxv.util.dexkit.DexKitTargetSealedEnum;
 import io.github.qauxv.util.dexkit.NTextItemBuilder_setETText;
 import io.github.qauxv.util.dexkit.impl.DexKitDeobfs;
-import io.luckypray.dexkit.DexKitBridge;
-import io.luckypray.dexkit.builder.MethodInvokingArgs;
-import io.luckypray.dexkit.builder.MethodUsingFieldArgs;
-import io.luckypray.dexkit.descriptor.member.DexFieldDescriptor;
-import io.luckypray.dexkit.descriptor.member.DexMethodDescriptor;
-import io.luckypray.dexkit.enums.FieldUsingType;
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import kotlin.Lazy;
+import kotlin.LazyKt;
+import org.luckypray.dexkit.DexKitBridge;
+import org.luckypray.dexkit.query.FindMethod;
+import org.luckypray.dexkit.query.enums.UsingType;
+import org.luckypray.dexkit.query.matchers.FieldMatcher;
+import org.luckypray.dexkit.query.matchers.MethodMatcher;
+import org.luckypray.dexkit.result.MethodData;
+import org.luckypray.dexkit.result.MethodDataList;
 
 //强制使用默认字体
 @FunctionHookEntry
@@ -62,6 +66,8 @@ import java.util.stream.Collectors;
 public class DefaultFont extends CommonSwitchFunctionHook implements DexKitFinder {
 
     public static final DefaultFont INSTANCE = new DefaultFont();
+
+    private final Lazy<Class<VASMsgFont>> lazyVsfCls = LazyKt.lazy(() -> VASMsgFont.class);
 
     protected DefaultFont() {
         super("rq_default_font");
@@ -121,13 +127,21 @@ public class DefaultFont extends CommonSwitchFunctionHook implements DexKitFinde
 
     @Override
     public boolean initOnce() throws ReflectiveOperationException {
-        if (QAppUtils.isQQnt()){
-            Method getFontID = VASMsgFont.class.getDeclaredMethod("getFontId");
+        if (requireMinQQVersion(QQVersion.QQ_9_0_15)) {
+            XposedBridge.hookAllConstructors(lazyVsfCls.getValue(), new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    VASMsgFont v = (VASMsgFont) param.thisObject;
+                    v.fontId = 0;
+                    v.magicFontType = 0;
+                }
+            });
+        } else if (QAppUtils.isQQnt()) {
+            Method getFontID = lazyVsfCls.getValue().getDeclaredMethod("getFontId");
             HookUtils.hookBeforeIfEnabled(this, getFontID, param -> param.setResult(0));
-            Method getMagicFontType = VASMsgFont.class.getDeclaredMethod("getMagicFontType");
+            Method getMagicFontType = lazyVsfCls.getValue().getDeclaredMethod("getMagicFontType");
             HookUtils.hookBeforeIfEnabled(this, getMagicFontType, param -> param.setResult(0));
-            return true;
-        }else {
+        } else {
             Method method = DexKit.loadMethodFromCache(NTextItemBuilder_setETText.INSTANCE);
             Objects.requireNonNull(method, "NTextItemBuilder_setETText.INSTANCE");
             HookUtils.hookBeforeIfEnabled(this, method, param -> param.setResult(null));
@@ -135,14 +149,13 @@ public class DefaultFont extends CommonSwitchFunctionHook implements DexKitFinde
             Method enlargeTextMsg = Initiator.loadClass("com.tencent.mobileqq.vas.font.api.impl.FontManagerServiceImpl")
                     .getDeclaredMethod("enlargeTextMsg", TextView.class);
             HookUtils.hookBeforeIfEnabled(this, enlargeTextMsg, param -> param.setResult(null));
-            return true;
         }
-
+        return true;
     }
 
     @Override
     public boolean isNeedFind() {
-        return DexKit.getMethodDescFromCacheImpl(NTextItemBuilder_setETText.INSTANCE) == null;
+        return !QAppUtils.isQQnt() && DexKit.getMethodDescFromCacheImpl(NTextItemBuilder_setETText.INSTANCE) == null;
     }
 
     @Override
@@ -151,50 +164,48 @@ public class DefaultFont extends CommonSwitchFunctionHook implements DexKitFinde
         DexDeobfsProvider.checkDeobfuscationAvailable();
         try (DexKitDeobfs dexKitDeobfs = DexKitDeobfs.newInstance()) {
             DexKitBridge dexKit = dexKitDeobfs.getDexKitBridge();
-            Map<DexMethodDescriptor, List<DexFieldDescriptor>> resultMethods = dexKit
-                    .findMethodUsingField(new MethodUsingFieldArgs.Builder()
-                            .fieldType("Landroid/widget/TextView;")
-                            .usingType(FieldUsingType.GET)
-                            .callerMethodDeclareClass(Initiator._TextItemBuilder().getName())
-                            .callerMethodReturnType("void")
-                            .callerMethodParamTypes(new String[]{"", Initiator._ChatMessage().getName()})
-                            .build());
-            List<DexMethodDescriptor> methods = resultMethods.keySet().stream()
-                    .filter(s -> s.getParameterTypesSig().contains("BaseBubbleBuilder"))
+            MethodDataList resultMethods = dexKit.findMethod(FindMethod.create()
+                    .matcher(MethodMatcher.create()
+                            .declaredClass(Initiator._TextItemBuilder().getName())
+                            .returnType("void")
+                            .paramTypes(null, Initiator._ChatMessage().getName())
+                            .addUsingField(FieldMatcher.create().type("android/widget/TextView"), UsingType.Read)
+                    )
+            );
+            List<MethodData> methods = resultMethods.stream()
+                    .filter(s -> s.toDexMethod().getMethodSign().contains("BaseBubbleBuilder"))
                     .collect(Collectors.toList());
             if (methods.size() == 1) {
                 try {
-                    DexMethodDescriptor descriptor = methods.get(0);
-                    descriptor.getMethodInstance(Initiator.getHostClassLoader());
-                    NTextItemBuilder_setETText.INSTANCE.setDescCache(descriptor.toString());
-                    Log.d("save id: " + DexKitTargetSealedEnum.INSTANCE.nameOf(NTextItemBuilder_setETText.INSTANCE) + ",method: " + descriptor);
+                    MethodData methodData = methods.get(0);
+                    methodData.getMethodInstance(Initiator.getHostClassLoader());
+                    NTextItemBuilder_setETText.INSTANCE.setDescCache(methodData.getDescriptor());
+                    Log.d("save id: " + DexKitTargetSealedEnum.INSTANCE.nameOf(NTextItemBuilder_setETText.INSTANCE) + ",method: " + methodData.getDescriptor());
                     return true;
                 } catch (Throwable e) {
                     traceError(e);
                 }
             }
-            Map<DexMethodDescriptor, List<DexMethodDescriptor>> resMap = dexKit.findMethodInvoking(
-                    new MethodInvokingArgs.Builder()
-                            .methodDeclareClass("Lcom/tencent/mobileqq/activity/aio/item/TextItemBuilder;")
-                            .methodReturnType("void")
-                            .methodParameterTypes(new String[]{"", Initiator._ChatMessage().getName()})
-                            .beInvokedMethodDeclareClass("Landroid/text/TextUtils;")
-                            .beInvokedMethodName("isEmpty")
-                            .beInvokedMethodReturnType("boolean")
-                            .build()
+            MethodDataList methods1 = dexKit.findMethod(FindMethod.create()
+                    .matcher(MethodMatcher.create()
+                            .declaredClass("com/tencent/mobileqq/activity/aio/item/TextItemBuilder")
+                            .returnType("void")
+                            .paramTypes(null, Initiator._ChatMessage().getName())
+                            .addInvoke("Landroid/text/TextUtils;->isEmpty(Ljava/lang/CharSequence;)Z")
+                    )
             );
-            Set<DexMethodDescriptor> methodSet = resMap.keySet().stream()
-                    .filter(s -> s.getParameterTypesSig().contains("BaseBubbleBuilder"))
+            Set<MethodData> methodSet = methods1.stream()
+                    .filter(s -> s.toDexMethod().getMethodSign().contains("BaseBubbleBuilder"))
                     .collect(Collectors.toSet());
-            List<DexMethodDescriptor> res = methods.stream()
+            List<MethodData> res = methods1.stream()
                     .filter(s -> !methodSet.contains(s))
                     .collect(Collectors.toList());
             if (res.size() == 1) {
                 try {
-                    DexMethodDescriptor descriptor = res.get(0);
-                    descriptor.getMethodInstance(Initiator.getHostClassLoader());
-                    NTextItemBuilder_setETText.INSTANCE.setDescCache(descriptor.toString());
-                    Log.d("save id: " + DexKitTargetSealedEnum.INSTANCE.nameOf(NTextItemBuilder_setETText.INSTANCE) + ",method: " + descriptor);
+                    MethodData methodData = res.get(0);
+                    methodData.getMethodInstance(Initiator.getHostClassLoader());
+                    NTextItemBuilder_setETText.INSTANCE.setDescCache(methodData.toString());
+                    Log.d("save id: " + DexKitTargetSealedEnum.INSTANCE.nameOf(NTextItemBuilder_setETText.INSTANCE) + ",method: " + methodData.getDescriptor());
                     return true;
                 } catch (Throwable e) {
                     traceError(e);

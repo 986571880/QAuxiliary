@@ -1,0 +1,16 @@
+syntax = "proto3";
+package io.github.qauxv.proto.trpc.msg;
+option java_package = "io.github.qauxv.proto.trpc.msg";
+
+import "trpc/msg/Group.proto";
+
+message RoutingHead {
+  uint64 from_uin = 1;
+  string from_uid = 2;
+  optional uint32 from_app_id = 3;
+  optional uint32 from_inst_id = 4;
+  uint64 to_uin = 5;
+  optional string to_uid = 6; // may be missing, some messages have it
+  optional bytes c2c = 7; // i have never seen this
+  optional Group group = 8;
+}

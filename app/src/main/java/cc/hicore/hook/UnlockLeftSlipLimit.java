@@ -22,11 +22,11 @@
 package cc.hicore.hook;
 
 import androidx.annotation.NonNull;
-import cc.hicore.ReflectUtil.MMethod;
+import cc.hicore.ReflectUtil.XMethod;
 import cc.ioctl.util.HookUtils;
 import cc.ioctl.util.HostInfo;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedHelpers;
+import io.github.qauxv.util.xpcompat.XC_MethodHook;
+import io.github.qauxv.util.xpcompat.XposedHelpers;
 import io.github.qauxv.base.annotation.FunctionHookEntry;
 import io.github.qauxv.base.annotation.UiItemAgentEntry;
 import io.github.qauxv.dsl.FunctionEntryRouter;
@@ -58,7 +58,7 @@ public class UnlockLeftSlipLimit extends CommonSwitchFunctionHook {
 
     @Override
     protected boolean initOnce() throws Exception {
-        if (HostInfo.requireMinQQVersion(QQVersion.QQ_8_9_63)) {
+        if (HostInfo.requireMinQQVersion(QQVersion.QQ_8_9_63_BETA_11345)) {
             XposedHelpers.findAndHookMethod(Initiator.loadClass("com.tencent.mobileqq.ark.api.impl.ArkHelperImpl"), "isSupportReply", String.class,
                     String.class, String.class, new XC_MethodHook() {
                         @Override
@@ -68,8 +68,7 @@ public class UnlockLeftSlipLimit extends CommonSwitchFunctionHook {
                     });
             return true;
         }
-        Method m = MMethod.FindMethod(DexKit.requireMethodFromCache(NLeftSwipeReplyHelper_reply.INSTANCE).getDeclaringClass(), methodName, boolean.class,
-                new Class[0]);
+        Method m = XMethod.clz(DexKit.requireMethodFromCache(NLeftSwipeReplyHelper_reply.INSTANCE).getDeclaringClass()).name(methodName).ret(boolean.class).get();
         HookUtils.hookBeforeIfEnabled(this, m, param -> param.setResult(true));
         return true;
     }

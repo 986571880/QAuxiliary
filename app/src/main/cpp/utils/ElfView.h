@@ -12,6 +12,8 @@
 #include <vector>
 #include <span>
 #include <string>
+#include <vector>
+#include <memory>
 // do not #include <elf.h> here, too many macros
 
 namespace utils {
@@ -25,98 +27,88 @@ public:
         kElf64 = 2,
     };
 
-    class ElfInfo {
-    public:
-        ElfClass elfClass = ElfClass::kNone;
-        uint16_t machine = 0;
-        std::string soname;
-        size_t loadedSize = 0;
-        const void* sysv_hash = nullptr;
-        uint32_t sysv_hash_nbucket = 0;
-        uint32_t sysv_hash_nchain = 0;
-        const uint32_t* sysv_hash_bucket = nullptr;
-        const uint32_t* sysv_hash_chain = nullptr;
-        const void* gnu_hash = nullptr;
-        const void* symtab = nullptr;
-        size_t symtab_size = 0;
-        const char* strtab = nullptr;
-        const void* dynsym = nullptr;
-        size_t dynsym_size = 0;
-        const char* dynstr = nullptr;
-        bool use_rela = false;
-        const void* reldyn = nullptr;
-        size_t reldyn_size = 0;
-        const void* reladyn = nullptr;
-        size_t reladyn_size = 0;
-        const void* relplt = nullptr;
-        size_t relplt_size = 0;
-    };
+    class ElfInfo;
 
 private:
-    std::span<const uint8_t> mMemory;
+    bool mIsValid = false;
     bool mIsLoaded = false;
-    ElfInfo mElfInfo;
+    std::unique_ptr<ElfInfo> mElfInfo;
 
 public:
+    ElfView();
 
-    void AttachFileMemMapping(std::span<const uint8_t> fileMap) noexcept;
+    ~ElfView() noexcept;
 
-    inline void AttachFileMemMapping(const void* address, size_t length) noexcept {
-        AttachFileMemMapping(std::span<const uint8_t>((const uint8_t*) address, length));
+    // no copy, no assign
+    ElfView(const ElfView&) = delete;
+    ElfView& operator=(const ElfView&) = delete;
+
+    void ParseFileMemMapping(std::span<const uint8_t> fileMap) noexcept;
+
+    inline void ParseFileMemMapping(const void* address, size_t length) noexcept {
+        ParseFileMemMapping(std::span<const uint8_t>((const uint8_t*) address, length));
     }
 
-    void AttachLoadedMemoryView(std::span<const uint8_t> memory);
+    void ParseLoadedMemoryView(std::span<const uint8_t> memory);
 
-    inline void AttachLoadedMemoryView(const void* address, size_t length) {
-        AttachLoadedMemoryView(std::span<const uint8_t>((const uint8_t*) address, length));
+    inline void ParseLoadedMemoryView(const void* address, size_t length) {
+        ParseLoadedMemoryView(std::span<const uint8_t>((const uint8_t*) address, length));
     }
 
-    [[nodiscard]] inline bool IsValid() const noexcept {
-        return !mMemory.empty() && mElfInfo.elfClass != ElfClass::kNone;
-    }
+    [[nodiscard]] bool IsValid() const noexcept;
 
-    inline void Detach() noexcept {
-        mMemory = {};
-        mElfInfo = {};
-        mIsLoaded = false;
-    }
+    void Detach() noexcept;
 
-    [[nodiscard]] inline int GetPointerSize() const noexcept {
-        switch (mElfInfo.elfClass) {
-            case ElfClass::kElf32:
-                return 4;
-            case ElfClass::kElf64:
-                return 8;
-            default:
-                return 0;
-        }
-    }
+    [[nodiscard]] int GetPointerSize() const noexcept;
 
-    [[nodiscard]] inline const ElfInfo& GetElfInfo() const noexcept {
-        return mElfInfo;
-    }
+    [[nodiscard]] uint8_t GetElfClass() const noexcept;
 
-    [[nodiscard]] inline int GetArchitecture() const noexcept {
-        return mElfInfo.machine;
-    }
+    /**
+     * Get the ELF machine type.
+     * @return the machine type, or 0 if elf is invalid.
+     */
+    [[nodiscard]] uint16_t GetArchitecture() const noexcept;
 
-    [[nodiscard]] inline size_t GetLoadedSize() const noexcept {
-        return mElfInfo.loadedSize;
-    }
+    /**
+     * Get the load bias of the elf file. Typically, you don't need to use this value.
+     * @return the load bias of the elf file.
+     */
+    [[nodiscard]] uint64_t GetLoadBias() const noexcept;
+
+    [[nodiscard]] size_t GetLoadedSize() const noexcept;
 
     /**
      * Get the soname of the elf file.
      * @return may be empty string.
      */
-    [[nodiscard]] inline const std::string& GetSoname() const noexcept {
-        return mElfInfo.soname;
-    }
+    [[nodiscard]] const std::string& GetSoname() const noexcept;
 
+    /**
+     * Find a symbol in the elf file.
+     * It will search the dynamic symbol table first, then the debug symbol table, then the mini debug info.
+     * @param symbol the name of the symbol.
+     * @return offset relative to the base address of the elf image, or 0 if not found.
+     */
     [[nodiscard]] uint64_t GetSymbolOffset(std::string_view symbol) const;
 
+    /**
+     * Just like GetSymbolOffset, but return the first symbol offset with the given prefix.
+     * @param symbolPrefix the prefix of the symbol.
+     * @return the offset of the symbol, or 0 if not found.
+     */
     [[nodiscard]] uint64_t GetFirstSymbolOffsetWithPrefix(std::string_view symbolPrefix) const;
 
+    /**
+     * Find the offset of a symbol in the GOT table.
+     * @param symbol the name of the symbol.
+     * @return a vector of offsets, may be empty.
+     */
     [[nodiscard]] std::vector<uint64_t> GetSymbolGotOffset(std::string_view symbol) const;
+
+private:
+    void ParseMiniDebugInfo(std::span<const uint8_t> input);
+
+    static void ParseDebugSymbol(std::span<const uint8_t> input, ElfInfo* pInfo, bool isMiniDebugInfo);
 
 };
 

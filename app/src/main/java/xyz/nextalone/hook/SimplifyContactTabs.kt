@@ -34,52 +34,41 @@ import xyz.nextalone.util.*
 object SimplifyContactTabs : MultiItemDelayableHook("na_simplify_contact_tabs_multi") {
 
     override val preferenceTitle = "精简联系人页面"
-    override val allItems = setOf("好友", "分组", "群聊", "设备", "通讯录", "订阅号")
+    override val allItems = setOf("好友", "分组", "群聊", "设备", "通讯录", "订阅号", "推荐", "频道", "机器人")
     override val defaultItems = setOf<String>()
-
     override val uiItemLocation = FunctionEntryRouter.Locations.Simplify.MAIN_UI_CONTACT
+    override val isAvailable = requireMinQQVersion(QQVersion.QQ_8_5_5)
 
     override fun initOnce() = throwOrTrue {
-        val contactsTabs = if(requireMinQQVersion(QQVersion.QQ_8_9_2)) "b" else "ContactsTabs"
-        val tabinfo = if (requireMinQQVersion(QQVersion.QQ_8_9_2)) "f" else "TabInfo"
-        "Lcom.tencent.mobileqq.activity.contacts.base.tabs.$contactsTabs;->a()V".method.hookAfter(
-            this
-        ) {
-            val list = it.thisObject.get(ArrayList::class.java) as ArrayList<Any>
-            val tabList = list.toMutableList()
-            list.clear()
-            val stringList: ArrayList<String> = arrayListOf()
-            val intList: ArrayList<Int> = arrayListOf()
-            val cls = "com.tencent.mobileqq.activity.contacts.base.tabs.$tabinfo".clazz
-            tabList.forEach { obj ->
-                val str = obj.get(String::class.java) as String
-                if (str == "好友" && !activeItems.contains(str)) {
-                    val id = obj.get(Int::class.java) as Int
-                    list.add(obj)
-                    stringList.add(str)
-                    intList.add(id)
-                } else if (!activeItems.contains(str)) {
-                    val id = obj.get(Int::class.java) as Int
-                    val instance = cls.instance(items.indexOf(str), id, str)
-                    list.add(instance)
-                    stringList.add(str)
-                    intList.add(id)
+        val nameContactsTabs = if (requireMinQQVersion(QQVersion.QQ_8_9_2)) "b" else "ContactsTabs"
+        "Lcom.tencent.mobileqq.activity.contacts.base.tabs.$nameContactsTabs;->a()V".method.hookAfter(this) {
+
+            val listTabId: ArrayList<Int> = arrayListOf()
+            val listTabText: ArrayList<String> = arrayListOf()
+            val listTabInfoTmp: ArrayList<Any> = arrayListOf()
+            val listTabInfo = it.thisObject.get(ArrayList::class.java) as ArrayList<Any>
+            listTabInfo.forEach { tabInfo ->
+                val id = tabInfo.get(Int::class.java) as Int
+                val tabText = tabInfo.get(String::class.java) as String
+                if (!activeItems.contains(tabText)) {
+                    listTabId.add(id)
+                    listTabText.add(tabText)
+                    listTabInfoTmp.add(tabInfo)
                 }
             }
-            var arrayListName = "a"
-            var intListName = "a"
+            listTabInfo.clear()
+            listTabInfo.addAll(listTabInfoTmp)
+
+            var nameStrArray = "a"
+            var nameIntArray = "b"
             it.thisObject.javaClass.declaredFields.forEach { field ->
-                if (field.type == Array<String>::class.java) {
-                    arrayListName = field.name
-                }
-                if (field.type == IntArray::class.java) {
-                    intListName = field.name
+                when (field.type) {
+                    Array<String>::class.java -> nameStrArray = field.name
+                    IntArray::class.java -> nameIntArray = field.name
                 }
             }
-            it.thisObject.set(arrayListName, Array<String>::class.java, stringList.toTypedArray())
-            it.thisObject.set(intListName, IntArray::class.java, intList.toIntArray())
+            it.thisObject.set(nameStrArray, Array<String>::class.java, listTabText.toTypedArray())
+            it.thisObject.set(nameIntArray, IntArray::class.java, listTabId.toIntArray())
         }
     }
-
-    override val isAvailable: Boolean get() = requireMinQQVersion(QQVersion.QQ_8_5_5)
 }

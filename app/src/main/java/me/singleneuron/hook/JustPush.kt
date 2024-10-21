@@ -22,17 +22,19 @@
 
 package me.singleneuron.hook
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import com.github.kyuubiran.ezxhelper.utils.tryOrFalse
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XC_MethodReplacement
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
+import io.github.qauxv.util.xpcompat.XC_MethodHook
+import io.github.qauxv.util.xpcompat.XC_MethodReplacement
+import io.github.qauxv.util.xpcompat.XposedBridge
+import io.github.qauxv.util.xpcompat.XposedHelpers
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.dsl.FunctionEntryRouter
@@ -73,7 +75,6 @@ object JustPush : CommonSwitchFunctionHook(targetProc = SyncUtils.PROC_ANY) {
                 @Throws(Throwable::class)
                 override fun afterHookedMethod(param: MethodHookParam) {
                     tryOrFalse {
-                        super.afterHookedMethod(param)
                         if (toClose?.get() == true) {
                             XposedHelpers.callMethod(param.thisObject, "close")
                             return
@@ -88,7 +89,6 @@ object JustPush : CommonSwitchFunctionHook(targetProc = SyncUtils.PROC_ANY) {
                 @Throws(Throwable::class)
                 override fun afterHookedMethod(param: MethodHookParam) {
                     tryOrFalse {
-                        super.afterHookedMethod(param)
                         if (toClose?.get() == true) {
                             XposedHelpers.callMethod(param.thisObject, "close")
                             return
@@ -107,20 +107,31 @@ object JustPush : CommonSwitchFunctionHook(targetProc = SyncUtils.PROC_ANY) {
                 }
             })
             XposedHelpers.findAndHookMethod("com.tencent.mobileqq.msf.service.MsfService".clazz, "onCreate", object : XC_MethodHook() {
+                @SuppressLint("UnspecifiedRegisterReceiverFlag")
                 @Throws(Throwable::class)
                 override fun afterHookedMethod(param: MethodHookParam) {
                     super.afterHookedMethod(param)
                     val intentFilter = IntentFilter()
                     intentFilter.addAction("mqq.intent.action.QQ_BACKGROUND")
                     intentFilter.addAction("mqq.intent.action.QQ_FOREGROUND")
-                    hostInfo.application.registerReceiver(object : BroadcastReceiver() {
+                    val receiver = object : BroadcastReceiver() {
                         override fun onReceive(context: Context, intent: Intent) {
                             when (intent.action) {
                                 "mqq.intent.action.QQ_BACKGROUND" -> context.sendBroadcast(Intent(BRD_CLOSE_SOCKET))
                                 "mqq.intent.action.QQ_FOREGROUND" -> context.sendBroadcast(Intent(BRD_RELEASE_SOCKET))
                             }
                         }
-                    }, intentFilter)
+                    }
+                    // Must not use ContextImpl.registerReceiver here.
+                    // QQ do not have $packageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        hostInfo.application.registerReceiver(receiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        hostInfo.application.registerReceiver(
+                            receiver, intentFilter,
+                            SyncUtils.getDynamicReceiverNotExportedPermission(hostInfo.application), null
+                        )
+                    }
                 }
             })
         }
@@ -128,6 +139,7 @@ object JustPush : CommonSwitchFunctionHook(targetProc = SyncUtils.PROC_ANY) {
 
     private fun hookServices() {
         XposedHelpers.findAndHookMethod("com.tencent.mobileqq.qfix.QFixApplication".clazz, "onCreate", object : XC_MethodReplacement() {
+            @SuppressLint("UnspecifiedRegisterReceiverFlag")
             @Throws(Throwable::class)
             override fun replaceHookedMethod(param: MethodHookParam): Any? {
 //              进程名为推送服务时不拉起QQ主进程
@@ -141,7 +153,7 @@ object JustPush : CommonSwitchFunctionHook(targetProc = SyncUtils.PROC_ANY) {
                     val intentFilter = IntentFilter()
                     intentFilter.addAction(BRD_CLOSE_SOCKET)
                     intentFilter.addAction(BRD_RELEASE_SOCKET)
-                    hostInfo.application.registerReceiver(object : BroadcastReceiver() {
+                    val receiver = object : BroadcastReceiver() {
                         override fun onReceive(context: Context, intent: Intent) {
                             when (intent.action) {
                                 BRD_CLOSE_SOCKET -> {
@@ -155,7 +167,19 @@ object JustPush : CommonSwitchFunctionHook(targetProc = SyncUtils.PROC_ANY) {
                                 BRD_RELEASE_SOCKET -> toClose!!.set(false)
                             }
                         }
-                    }, intentFilter)
+                    }
+                    // Must not use ContextImpl.registerReceiver here.
+                    // QQ do not have $packageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        hostInfo.application.registerReceiver(receiver, intentFilter, Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        hostInfo.application.registerReceiver(
+                            receiver,
+                            intentFilter,
+                            SyncUtils.getDynamicReceiverNotExportedPermission(hostInfo.application),
+                            null
+                        )
+                    }
                 }
                 return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args)
             }

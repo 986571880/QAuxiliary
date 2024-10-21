@@ -29,7 +29,7 @@ import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.getObjectAs
 import com.github.kyuubiran.ezxhelper.utils.hookAfter
 import com.github.kyuubiran.ezxhelper.utils.setViewZeroSize
-import de.robv.android.xposed.XposedBridge
+import io.github.qauxv.util.xpcompat.XposedBridge
 import io.github.qauxv.base.annotation.FunctionHookEntry
 import io.github.qauxv.base.annotation.UiItemAgentEntry
 import io.github.qauxv.dsl.FunctionEntryRouter
@@ -56,6 +56,14 @@ object RemoveDailySign : CommonSwitchFunctionHook("kr_remove_daily_sign") {
         val callback = HookUtils.afterIfEnabled(this) { param ->
             // em_drawer_sign_up
             val dailySignName = when {
+                requireMinQQVersion(QQVersion.QQ_9_0_90) -> "b0"//9.0.90~9.0.95
+                requireMinQQVersion(QQVersion.QQ_9_0_85) -> "d0"//9.0.85
+                requireMinQQVersion(QQVersion.QQ_9_0_35) -> "c0"//9.0.35~9.0.81
+                requireMinQQVersion(QQVersion.QQ_9_0_20) -> "a0"//9.0.20~9.0.30
+                requireMinQQVersion(QQVersion.QQ_9_0_0) -> "b0"//9.0.0~9.0.17
+                requireMinQQVersion(QQVersion.QQ_8_9_90) -> "e0"
+                requireMinQQVersion(QQVersion.QQ_8_9_88) -> "h0"
+                requireMinQQVersion(QQVersion.QQ_8_9_70) -> "h0"
                 requireMinQQVersion(QQVersion.QQ_8_9_68) -> "h0"
                 requireMinQQVersion(QQVersion.QQ_8_9_28) -> "i0"
                 requireMinQQVersion(QQVersion.QQ_8_9_25) -> "h0"
@@ -69,18 +77,36 @@ object RemoveDailySign : CommonSwitchFunctionHook("kr_remove_daily_sign") {
             }
             param.thisObject.getObjectAs<LinearLayout>(dailySignName, LinearLayout::class.java).setViewZeroSize()
         }
-        if (requireMinQQVersion(QQVersion.QQ_8_9_25)) {
-            XposedBridge.hookAllConstructors(loadClass("com.tencent.mobileqq.activity.QQSettingMeView"), callback)
-        } else {
-            XposedBridge.hookAllConstructors(loadClass("com.tencent.mobileqq.activity.QQSettingMe"), callback)
-        }
+        XposedBridge.hookAllConstructors(
+            loadClass(
+                if (requireMinQQVersion(QQVersion.QQ_8_9_90)) {
+                    "com.tencent.mobileqq.QQSettingMeView"
+                } else if (requireMinQQVersion(QQVersion.QQ_8_9_25)) {
+                    "com.tencent.mobileqq.activity.QQSettingMeView"
+                } else {
+                    "com.tencent.mobileqq.activity.QQSettingMe"
+                }
+            ), callback
+        )
         // for NT QQ 8.9.68.11450
-        val clazz = Initiator.load("com.tencent.mobileqq.activity.QQSettingMeViewV9")
+        val clazz = Initiator.load(
+            if (requireMinQQVersion(QQVersion.QQ_8_9_90))
+                "com.tencent.mobileqq.QQSettingMeViewV9"
+            else "com.tencent.mobileqq.activity.QQSettingMeViewV9"
+        )
         if (clazz != null) {
             clazz.findField {
                 val cz = type
-                if (cz.name.contains("com.tencent.mobileqq.activity.qqsettingme.bizParts")) {
+                // private final com.tencent.mobileqq.bizParts.a F;
+                if (cz.name.contains(
+                        when {
+                            requireMinQQVersion(QQVersion.QQ_8_9_90) -> "com.tencent.mobileqq.bizParts"
+                            else -> "com.tencent.mobileqq.activity.qqsettingme.bizParts"
+                        }
+                    )
+                ) {
                     var i = 0
+                    // 目标类里面的 LinearLayout 类型的参数一定大于2
                     for (f in cz.declaredFields) {
                         if (f.type == LinearLayout::class.java) {
                             i++
@@ -99,6 +125,7 @@ object RemoveDailySign : CommonSwitchFunctionHook("kr_remove_daily_sign") {
                             fields.add(f)
                         }
                     }
+                    // private LinearLayout g;
                     it.thisObject.getObjectAs<LinearLayout>(fields[1].name, LinearLayout::class.java).setViewZeroSize()
                 }
         }

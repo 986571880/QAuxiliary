@@ -23,7 +23,6 @@
 package cc.ioctl.hook.ui.title
 
 import android.view.View
-import com.github.kyuubiran.ezxhelper.utils.Log
 import com.github.kyuubiran.ezxhelper.utils.findMethod
 import com.github.kyuubiran.ezxhelper.utils.hookBefore
 import io.github.qauxv.base.annotation.FunctionHookEntry
@@ -40,34 +39,31 @@ import xyz.nextalone.util.throwOrTrue
 @UiItemAgentEntry
 object RemoveCameraButton : CommonSwitchFunctionHook("kr_disable_camera_button") {
 
-    override val name: String = "屏蔽主界面相机/小世界图标"
+    override val name: String = "屏蔽消息界面标题栏相机/小世界图标"
 
-    override val isAvailable: Boolean get() = !isTim()
+    override val isAvailable: Boolean get() = !isTim() && !requireMinQQVersion(QQVersion.QQ_8_9_88)
 
     override fun initOnce() = throwOrTrue {
         findMethod(Initiator._ConversationTitleBtnCtrl()) {
             val methodName = when {
-                requireMinQQVersion(QQVersion.QQ_8_9_63) -> "D"
+                requireMinQQVersion(QQVersion.QQ_8_9_63_BETA_11345) -> "D"
                 requireMinQQVersion(QQVersion.QQ_8_9_10) -> "C"
                 requireMinQQVersion(QQVersion.QQ_8_8_93) -> "G"
                 else -> "a"
             }
-            name == methodName
-                && returnType == Void.TYPE && parameterTypes.contentEquals(arrayOf(View::class.java))
+            name == methodName && returnType == Void.TYPE && parameterTypes.contentEquals(arrayOf(View::class.java))
         }.hookBefore {
-            Log.d("屏蔽消息界面相机/小世界图标")
             if (!isEnabled) return@hookBefore; it.result = null
         }
         findMethod(Initiator._ConversationTitleBtnCtrl()) {
             val methodName = when {
-                requireMinQQVersion(QQVersion.QQ_8_9_63) -> "C"
+                requireMinQQVersion(QQVersion.QQ_8_9_63_BETA_11345) -> "C"
                 requireMinQQVersion(QQVersion.QQ_8_9_10) -> "B"
                 requireMinQQVersion(QQVersion.QQ_8_9_5) -> "E"
                 requireMinQQVersion(QQVersion.QQ_8_8_93) -> "F"
                 else -> "a"
             }
-            name == methodName
-                && returnType == Void.TYPE && parameterTypes.isEmpty()
+            name == methodName && returnType == Void.TYPE && parameterTypes.isEmpty()
         }.hookBefore {
             if (!isEnabled) return@hookBefore; it.result = null
         }

@@ -99,6 +99,33 @@ public class IoUtils {
     }
 
     /**
+     * Read exactly count bytes from an input stream and write them to a byte array. If too few bytes are available, an exception is thrown.
+     * <p>
+     * The input stream is not closed after reading. It is the caller's responsibility to close the input stream.
+     *
+     * @param is     the input stream to read from
+     * @param buf    the byte array to write to
+     * @param offset the offset in the byte array to start writing
+     * @param count  the number of bytes to read
+     * @throws IOException if an I/O error occurs, or if the end of the stream is reached before count bytes are read
+     */
+    public static void readExactly(@NonNull InputStream is, @NonNull byte[] buf, int offset, int count) throws IOException {
+        Objects.requireNonNull(is, "is == null");
+        Objects.requireNonNull(buf, "buf == null");
+        if (offset < 0 || count < 0 || offset + count > buf.length) {
+            throw new IndexOutOfBoundsException("offset: " + offset + ", count: " + count + ", buf.length: " + buf.length);
+        }
+        int read = 0;
+        while (read < count) {
+            int len = is.read(buf, offset + read, count - read);
+            if (len == -1) {
+                throw new IOException("End of stream reached before reading " + count + " bytes");
+            }
+            read += len;
+        }
+    }
+
+    /**
      * Used for create a parent directory if it does not exist.
      * <p>
      * This will throw an unsafe {@link IOException} if the parent directory cannot be created.
@@ -132,19 +159,21 @@ public class IoUtils {
     public static File mkdirsOrThrow(@NonNull File dir) {
         Objects.requireNonNull(dir, "dir == null");
         if (!dir.exists() && !dir.mkdirs()) {
-            unsafeThrow(new IOException("Failed to create directory: " + dir.getAbsolutePath()));
+            throw unsafeThrow(new IOException("Failed to create directory: " + dir.getAbsolutePath()));
         }
         return dir;
     }
 
-    public static void unsafeThrow(@NonNull Throwable t) {
+    public static AssertionError unsafeThrow(@NonNull Throwable t) {
         Objects.requireNonNull(t, "t == null");
         unsafeThrowImpl(t);
+        throw new AssertionError("unreachable");
     }
 
-    public static void unsafeThrowForIteCause(@NonNull Throwable t) {
+    public static AssertionError unsafeThrowForIteCause(@NonNull Throwable t) {
         Objects.requireNonNull(t, "t == null");
         unsafeThrowImpl(getIteCauseOrSelf(t));
+        throw new AssertionError("unreachable");
     }
 
     @NonNull
@@ -178,6 +207,37 @@ public class IoUtils {
         try (OutputStream os = new FileOutputStream(file)) {
             os.write(data);
             os.flush();
+        }
+    }
+
+    public static void makeFileReadOnly(@NonNull File file) {
+        if (!file.isFile()) {
+            throw new IllegalArgumentException("Not a file: " + file.getAbsolutePath());
+        }
+        if (!file.setReadOnly() && file.canWrite()) {
+            throw IoUtils.unsafeThrow(new IOException("Failed to set read-only: " + file.getAbsolutePath()));
+        }
+    }
+
+    public static void checkFileReadOnly(@NonNull File file) {
+        if (!file.isFile()) {
+            throw new IllegalStateException("Not a file: " + file.getAbsolutePath());
+        }
+        if (!file.canWrite()) {
+            return;
+        }
+        throw new IllegalStateException("File is not read-only: " + file.getAbsolutePath());
+    }
+
+    public static void deleteSingleFileOrThrow(@NonNull File file) {
+        if (!file.exists()) {
+            return;
+        }
+        if (!file.isFile()) {
+            throw new IllegalArgumentException("Not a file: " + file.getAbsolutePath());
+        }
+        if (!file.delete() && file.exists()) {
+            throw IoUtils.unsafeThrow(new IOException("Failed to delete file: " + file.getAbsolutePath()));
         }
     }
 
@@ -244,4 +304,9 @@ public class IoUtils {
         }
         return new String(hex);
     }
+
+    public static void throwRuntimeExceptionForTest() {
+        throw new RuntimeException("This is a test exception");
+    }
+
 }

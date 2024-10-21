@@ -1,0 +1,13 @@
+syntax = "proto3";
+package io.github.qauxv.proto.trpc.msg;
+option java_package = "io.github.qauxv.proto.trpc.msg";
+
+import "trpc/msg/RoutingHead.proto";
+import "trpc/msg/ContentHead.proto";
+import "trpc/msg/MessageBody.proto";
+
+message Message {
+  RoutingHead routing_head = 1;
+  ContentHead content_head = 2;
+  MessageBody body = 3;
+}

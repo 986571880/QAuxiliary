@@ -83,6 +83,16 @@ public class Initiator {
         }
     }
 
+    public static boolean checkHostHasClass(String className) {
+        ClassLoader hostClassLoader = getHostClassLoader();
+        try {
+            hostClassLoader.loadClass(className);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
     /**
      * Load a class, if the class is not found, a ClassNotFoundException will be thrown.
      *
@@ -232,7 +242,9 @@ public class Initiator {
         String[] candidates = new String[]{
                 "com.tencent.mobileqq.startup.director.a",
                 "com.tencent.mobileqq.h3.a.a",
-                "com.tencent.mobileqq.g3.a.a"
+                "com.tencent.mobileqq.g3.a.a",
+                "com.tencent.mobileqq.i3.a.a",
+                "com.tencent.mobileqq.j3.a.a"
         };
         for (String candidate : candidates) {
             Class<?> klass = load(candidate);
@@ -469,7 +481,7 @@ public class Initiator {
     }
 
     @Nullable
-    private static Class<?> findClassWithSynthetics(@NonNull String className, int... index) {
+    public static Class<?> findClassWithSynthetics(@NonNull String className, int... index) {
         Class<?> cache = sClassCache.get(className);
         if (cache != null) {
             return cache;

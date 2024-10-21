@@ -27,7 +27,6 @@ import android.graphics.Color
 import android.view.View
 import android.widget.EditText
 import android.widget.TextView
-import com.github.kyuubiran.ezxhelper.utils.Log
 import com.github.kyuubiran.ezxhelper.utils.findFieldObjectAs
 import com.github.kyuubiran.ezxhelper.utils.getObjectByTypeAs
 import com.github.kyuubiran.ezxhelper.utils.invokeMethodAs
@@ -54,6 +53,7 @@ import xyz.nextalone.util.hookAfter
 import xyz.nextalone.util.hookBefore
 import xyz.nextalone.util.method
 import xyz.nextalone.util.throwOrTrue
+import java.lang.reflect.Modifier
 
 @[FunctionHookEntry UiItemAgentEntry]
 object TroopFileRename : PluginDelayableHook("ketal_TroopFileRename"), View.OnClickListener {
@@ -65,15 +65,15 @@ object TroopFileRename : PluginDelayableHook("ketal_TroopFileRename"), View.OnCl
     override val isAvailable = requireMinQQVersion(QQVersion.QQ_8_6_0)
 
     override fun startHook(classLoader: ClassLoader) = throwOrTrue {
-        val builder = if (requireMinQQVersion(QQVersion.QQ_8_9_0)) {
-            "com.tencent.mobileqq.troop.widget.g"
-        } else {
-            "com.tencent.mobileqq.troop.widget.TroopFileItemBuilder"
-        }.findClass(classLoader)
+        val builderClzName = if(requireMinQQVersion(QQVersion.QQ_9_1_5_BETA_20015)) "j"
+        else if (requireMinQQVersion(QQVersion.QQ_9_0_20)) "i"
+        else if (requireMinQQVersion(QQVersion.QQ_8_9_88)) "h"
+        else if (requireMinQQVersion(QQVersion.QQ_8_9_0)) "g"
+        else "TroopFileItemBuilder"
+        val builder = ("com.tencent.mobileqq.troop.widget.$builderClzName").findClass(classLoader)
         builder.declaredMethods.find {
             val args = it.parameterTypes
-            it.returnType == Void.TYPE
-                && args[1].equals(View::class.java)
+            it.returnType == Void.TYPE && args[1].equals(View::class.java)
         }?.hookBefore(this) {
             val ctx = it.args[0]
             val obj = it.args[2] as Array<*>
@@ -96,8 +96,13 @@ object TroopFileRename : PluginDelayableHook("ketal_TroopFileRename"), View.OnCl
             }
         }
 
-        val clazzName = if (requireMinQQVersion(QQVersion.QQ_8_9_0)) "c" else "TrooFileTextViewMenuBuilder"
-        val updateRightMenuItem = "Lcom/tencent/mobileqq/troop/widget/$clazzName;->updateRightMenuItem(ILjava/lang/Object;Lcom/tencent/widget/SwipRightMenuBuilder\$SwipRightMenuItem;Landroid/view/View\$OnClickListener;)Landroid/view/View;".method
+        val clazzName = if(requireMinQQVersion(QQVersion.QQ_9_1_5_BETA_20015)) "f"
+        else if (requireMinQQVersion(QQVersion.QQ_9_0_20)) "e"
+        else if (requireMinQQVersion(QQVersion.QQ_8_9_88)) "d"
+        else if (requireMinQQVersion(QQVersion.QQ_8_9_0)) "c"
+        else "TrooFileTextViewMenuBuilder"
+        val updateRightMenuItem =
+            "Lcom/tencent/mobileqq/troop/widget/$clazzName;->updateRightMenuItem(ILjava/lang/Object;Lcom/tencent/widget/SwipRightMenuBuilder\$SwipRightMenuItem;Landroid/view/View\$OnClickListener;)Landroid/view/View;".method
         updateRightMenuItem.hookAfter(this) {
             val obj = it.args[1] as Array<*>
             val info = TroopFileInfo(obj[1]!!)
@@ -118,7 +123,12 @@ object TroopFileRename : PluginDelayableHook("ketal_TroopFileRename"), View.OnCl
             val ctx = CommonContextWrapper.createMaterialDesignContext(v.context)
             val qQAppInterface = item.getObjectByTypeAs<QQAppInterface>(QQAppInterface::class.java)
             val gid = item.getObjectByTypeAs<Long>(Long::class.java)
-            val tv = item.getObjectByTypeAs<TextView>("com.tencent.mobileqq.troop.widget.EllipsizingTextView".clazz!!)
+            val tv = if (requireMinQQVersion(QQVersion.QQ_9_0_65)) {
+                item.javaClass.declaredFields.first { it.type == TextView::class.java && Modifier.isProtected(it.modifiers) }
+                    .apply { isAccessible = true }.get(item) as TextView
+            } else {
+                item.getObjectByTypeAs("com.tencent.mobileqq.troop.widget.EllipsizingTextView".clazz!!)
+            }
             TroopFileProtocol.getFileInfo(qQAppInterface, gid, info.path, object : TroopFileGetOneFileInfoObserver() {
                 override fun onResult(result: Boolean, code: Int, fileInfo: group_file_common.FileInfo?) {
                     if (!result || fileInfo == null) {
@@ -128,7 +138,7 @@ object TroopFileRename : PluginDelayableHook("ketal_TroopFileRename"), View.OnCl
                     showInput(ctx, qQAppInterface, gid, fileInfo, tv)
                 }
             })
-        }.onFailure { Log.d(it) }
+        }.onFailure { traceError(it) }
     }
 
     private fun showInput(
@@ -159,6 +169,7 @@ object TroopFileRename : PluginDelayableHook("ketal_TroopFileRename"), View.OnCl
                 })
             }
             setNegativeButton("取消") { _, _ -> }
+            setCancelable(false)
         }.show()
     }
 }

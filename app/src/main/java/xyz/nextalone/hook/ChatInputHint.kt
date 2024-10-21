@@ -63,8 +63,8 @@ object ChatInputHint : CommonConfigFunctionHook("na_chat_input_hint", arrayOf(NB
     private const val strCfg = "na_chat_input_hint_str"
 
     override fun initOnce(): Boolean = throwOrTrue {
-        if (requireMinQQVersion(QQVersion.QQ_8_9_63)) {
-            // 初始化后
+        if (requireMinQQVersion(QQVersion.QQ_8_9_63_BETA_11345)) {
+            // 私聊 && QQ9.0.35版本后的群聊
             DexKit.requireMethodFromCache(AIO_InputRootInit_QQNT).hookAfter(this) {
                 it.thisObject.javaClass.declaredFields.single { it.type == EditText::class.java }.apply {
                     isAccessible = true
@@ -72,12 +72,21 @@ object ChatInputHint : CommonConfigFunctionHook("na_chat_input_hint", arrayOf(NB
                     et.hint = getValue()
                 }
             }
-            // 群设置hint为空后
-            (if (requireMinQQVersion(QQVersion.QQ_8_9_73)) "Lcom/tencent/mobileqq/aio/input/b/c;->m()V"
-            else "Lcom/tencent/mobileqq/aio/input/b/c;->l()V").method.hookAfter(this) { param ->
-                val f = param.thisObject.javaClass.getDeclaredField("f").apply { isAccessible = true }.get(param.thisObject)
-                val b = f.javaClass.getDeclaredField("b").apply { isAccessible = true }.get(f) as EditText
-                b.hint = getValue()
+            // QQ9.0.35版本前的群聊
+            if (!requireMinQQVersion(QQVersion.QQ_9_0_35)) {
+                when { // Lcom/tencent/mobileqq/aio/input/anonymous/AnonymousModeInputVBDelegate;->setNotAnonymousHint()V
+                    requireMinQQVersion(QQVersion.QQ_9_0_30) -> "Lcom/tencent/mobileqq/aio/input/c/c;->l()V"
+                    requireMinQQVersion(QQVersion.QQ_9_0_20) -> "Lcom/tencent/mobileqq/aio/input/b/c;->l()V"
+                    requireMinQQVersion(QQVersion.QQ_8_9_73) -> "Lcom/tencent/mobileqq/aio/input/b/c;->m()V"
+                    else -> "Lcom/tencent/mobileqq/aio/input/b/c;->l()V"
+                }.method.hookAfter(this) { param ->
+                    val f = param.thisObject.javaClass.getDeclaredField("f").apply { isAccessible = true }.get(param.thisObject)
+                    val b = f.javaClass.declaredFields.single {
+                        it.isAccessible = true
+                        it.get(f) is EditText
+                    }.get(f) as EditText
+                    b.hint = getValue()
+                }
             }
         } else {
             DexKit.requireMethodFromCache(NBaseChatPie_init).hookAfter(this) {

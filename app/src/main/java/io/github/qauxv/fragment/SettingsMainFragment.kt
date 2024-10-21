@@ -47,12 +47,15 @@ import io.github.qauxv.config.SafeModeManager
 import io.github.qauxv.dsl.FunctionEntryRouter
 import io.github.qauxv.dsl.func.*
 import io.github.qauxv.dsl.item.*
+import io.github.qauxv.tips.newfeaturehint.NewFeatureIntroduceFragment
+import io.github.qauxv.tips.newfeaturehint.NewFeatureManager
 import io.github.qauxv.util.SyncUtils
 import io.github.qauxv.util.SyncUtils.async
 import io.github.qauxv.util.SyncUtils.runOnUiThread
 import io.github.qauxv.util.UiThread
+import io.github.qauxv.util.hostInfo
 import io.github.qauxv.util.isInHostProcess
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import me.singleneuron.util.forSuBanXia
 
 class SettingsMainFragment : BaseRootLayoutFragment() {
@@ -158,7 +161,7 @@ class SettingsMainFragment : BaseRootLayoutFragment() {
         for (i in itemList.indices) {
             val item = itemList[i]
             if (item is UiAgentItem) {
-                val valueStateFlow: MutableStateFlow<String?>? = item.agentProvider.uiItemAgent.valueState
+                val valueStateFlow: StateFlow<String?>? = item.agentProvider.uiItemAgent.valueState
                 if (valueStateFlow != null) {
                     lifecycleScope.launchWhenResumed {
                         valueStateFlow.collect {
@@ -197,11 +200,14 @@ class SettingsMainFragment : BaseRootLayoutFragment() {
         if (!mTargetUiAgentNavId.isNullOrEmpty() && !mTargetUiAgentNavigated) {
             navigateToTargetUiAgentItem()
         }
-        val safeMode = SafeModeManager.getManager().isEnabled
-        subtitle = if (safeMode) {
-            "安全模式（停用所有功能）"
-        } else {
-            null
+        val hostName = hostInfo.hostName
+        val safeModeNow = SafeModeManager.getManager().isEnabledForThisTime
+        val safeModeNextTime = SafeModeManager.getManager().isEnabledForNextTime
+        subtitle = when {
+            safeModeNow && safeModeNextTime -> "安全模式（停用所有功能）"
+            !safeModeNow && safeModeNextTime -> "安全模式需要重启 $hostName 生效"
+            safeModeNow && !safeModeNextTime -> "重新启动 $hostName 后将退出安全模式"
+            else -> null
         }
     }
 
@@ -377,6 +383,21 @@ class SettingsMainFragment : BaseRootLayoutFragment() {
 
     private fun addHeaderItemToRootDslTree(dslTree: ArrayList<DslTMsgListItemInflatable>) {
         // TODO: 2022-02-22 add flavor to root dsl tree
+        if (NewFeatureManager.newFeatureTipEnabled) {
+            val newFeatureCount = NewFeatureManager.queryNewFeatures()?.size ?: 0
+            if (newFeatureCount > 0) {
+                val newFeatureBanner = TextBannerItem(
+                    text = "本次更新增加了 $newFeatureCount 项新功能，点击查看",
+                    isCloseable = true,
+                    onClick = {
+                        val fragment = NewFeatureIntroduceFragment()
+                        requireSettingsHostActivity().presentFragment(fragment)
+                    }
+                )
+                // add to the beginning
+                dslTree.add(0, newFeatureBanner)
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
